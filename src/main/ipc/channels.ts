@@ -39,4 +39,29 @@ export const channels = {
     updateProgress: IPC_CHANNELS.UPDATER_UPDATE_PROGRESS,
     updateDownloaded: IPC_CHANNELS.UPDATER_UPDATE_DOWNLOADED,
   },
+  // 数据同步
+  sync: {
+    start: IPC_CHANNELS.SYNC_START,
+    status: IPC_CHANNELS.SYNC_STATUS,
+    cancel: IPC_CHANNELS.SYNC_CANCEL,
+    restartTimer: IPC_CHANNELS.SYNC_RESTART_TIMER,
+  },
+  // 原始数据
+  raw: {
+    list: IPC_CHANNELS.RAW_LIST,
+    get: IPC_CHANNELS.RAW_GET,
+    count: IPC_CHANNELS.RAW_COUNT,
+  },
+  // 叙事数据
+  narrative: {
+    list: IPC_CHANNELS.NARRATIVE_LIST,
+    get: IPC_CHANNELS.NARRATIVE_GET,
+    byRawId: IPC_CHANNELS.NARRATIVE_BY_RAW_ID,
+    count: IPC_CHANNELS.NARRATIVE_COUNT,
+  },
+  // 远程 API
+  remote: {
+    stats: IPC_CHANNELS.REMOTE_STATS,
+    health: IPC_CHANNELS.REMOTE_HEALTH,
+  },
 } as const;

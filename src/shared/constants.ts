@@ -52,6 +52,28 @@ export const IPC_CHANNELS = {
   UPDATER_UPDATE_AVAILABLE: 'updater:update-available',
   UPDATER_UPDATE_PROGRESS: 'updater:update-progress',
   UPDATER_UPDATE_DOWNLOADED: 'updater:update-downloaded',
+
+  // 数据同步
+  SYNC_START: 'sync:start',
+  SYNC_STATUS: 'sync:status',
+  SYNC_CANCEL: 'sync:cancel',
+  SYNC_PROGRESS: 'sync:progress',
+  SYNC_RESTART_TIMER: 'sync:restartTimer',
+
+  // 原始数据
+  RAW_LIST: 'raw:list',
+  RAW_GET: 'raw:get',
+  RAW_COUNT: 'raw:count',
+
+  // 叙事数据
+  NARRATIVE_LIST: 'narrative:list',
+  NARRATIVE_GET: 'narrative:get',
+  NARRATIVE_BY_RAW_ID: 'narrative:byRawId',
+  NARRATIVE_COUNT: 'narrative:count',
+
+  // 远程 API
+  REMOTE_STATS: 'remote:stats',
+  REMOTE_HEALTH: 'remote:health',
 } as const;
 
 // 存储键名

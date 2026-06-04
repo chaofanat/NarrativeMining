@@ -16,46 +16,21 @@
 ├── src/
 │   ├── main/                    # 主进程 (Node.js 环境)
 │   │   ├── index.ts             # 应用入口
-│   │   ├── window/              # 窗口管理
-│   │   │   ├── MainWindow.ts    # 主窗口类
-│   │   │   └── WindowManager.ts # 多窗口管理器
+│   │   ├── database/            # SQLite 初始化 + FTS 索引
+│   │   ├── services/            # 业务逻辑
+│   │   │   ├── ApiClient.ts     # 远程 API 封装
+│   │   │   ├── SyncService.ts   # 数据同步调度
+│   │   │   ├── RawMessageService.ts
+│   │   │   └── NarrativeService.ts
 │   │   ├── ipc/                 # IPC 通信
-│   │   │   ├── channels.ts      # 频道常量定义
-│   │   │   └── handlers.ts      # 处理器注册
-│   │   ├── tray/                # 系统托盘
-│   │   ├── updater/             # 自动更新
-│   │   ├── store/               # 数据存储 (electron-store)
-│   │   ├── logger/              # 日志系统 (electron-log)
-│   │   └── crash/               # 崩溃报告
-│   ├── preload/                 # 预加载脚本 (桥接主进程和渲染进程)
-│   │   └── index.ts
-│   ├── renderer/                # 渲染进程 (浏览器环境)
-│   │   ├── index.html
-│   │   └── src/
-│   │       ├── main.ts          # Vue 应用入口
-│   │       ├── App.vue          # 根组件
-│   │       ├── router/          # 路由配置
-│   │       ├── stores/          # Pinia 状态管理
-│   │       ├── views/           # 页面组件
-│   │       ├── components/      # 通用组件
-│   │       ├── hooks/           # 组合式函数
-│   │       ├── utils/           # 工具函数
-│   │       └── styles/          # 样式文件
-│   └── shared/                  # 共享代码（类型定义、常量）
-│       ├── types.ts
-│       └── constants.ts
-├── resources/                   # 静态资源（图标等）
-├── scripts/                     # 构建脚本
-├── CLAUDE.md                    # 本文件
-├── package.json
-├── forge.config.ts              # Electron Forge 配置
-├── vite.main.config.ts          # 主进程 Vite 配置
-├── vite.preload.config.ts       # 预加载脚本 Vite 配置
-├── vite.renderer.config.ts      # 渲染进程 Vite 配置
-├── tsconfig.json                # TypeScript 基础配置
-├── tsconfig.main.json           # 主进程 TS 配置
-├── tsconfig.preload.json        # 预加载脚本 TS 配置
-└── tsconfig.renderer.json       # 渲染进程 TS 配置
+│   │   ├── store/               # 配置存储 (electron-store)
+│   │   ├── logger/              # 日志系统
+│   │   └── window/              # 窗口管理
+│   ├── preload/                 # 预加载脚本
+│   ├── renderer/                # 渲染进程 (Vue 3)
+│   └── shared/                  # 共享类型 + 常量
+├── CLAUDE.md
+└── package.json
 ```
 
 ## 开发指南
@@ -123,60 +98,7 @@ Model  → Service → View  → Bridge
 
 ### 示例：添加"笔记"功能
 
-**Step 1: Model（数据层）**
-```typescript
-// src/shared/types.ts
-export interface Note {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-```
-
-**Step 2: Service（服务层）**
-```typescript
-// src/main/services/noteService.ts
-export class NoteService {
-  async getAll(): Promise<Note[]> { ... }
-  async create(note: Note): Promise<void> { ... }
-  async update(id: string, note: Partial<Note>): Promise<void> { ... }
-  async delete(id: string): Promise<void> { ... }
-}
-
-// src/main/ipc/handlers.ts
-ipcMain.handle('note:getAll', () => noteService.getAll());
-ipcMain.handle('note:create', (_, note) => noteService.create(note));
-```
-
-**Step 3: View（视图层）**
-```vue
-<!-- src/renderer/src/views/NoteList.vue -->
-<template>
-  <div class="note-list">
-    <NoteCard v-for="note in notes" :key="note.id" :note="note" />
-  </div>
-</template>
-```
-
-**Step 4: Bridge（桥接层）**
-```typescript
-// src/preload/index.ts
-note: {
-  getAll: () => ipcRenderer.invoke('note:getAll'),
-  create: (note) => ipcRenderer.invoke('note:create', note),
-}
-```
-
-### 与传统 Web 开发的对比
-
-| MSVB (Electron) | MTV (Django) | 说明 |
-|-----------------|--------------|------|
-| Model | Model | 数据结构定义 |
-| Service | View (业务逻辑) | 处理业务逻辑 |
-| View | Template | 用户界面展示 |
-| Bridge | URL 路由 | 请求路由和分发 |
+按 Model → Service → View → Bridge 顺序：`types.ts` 定义接口 → `services/` 实现逻辑 + `ipc/handlers.ts` 注册处理器 → `views/` 创建组件 → `preload/index.ts` 暴露 API。
 
 ### 设计原则
 
@@ -189,145 +111,51 @@ note: {
 
 ## 核心功能
 
-### 1. IPC 通信
+- **IPC 通信**：主进程/渲染进程通过 IPC 通信，类型定义在 `src/shared/types.ts`，频道常量在 `src/shared/constants.ts`
+- **数据存储**：`electron-store`，配置在 `src/main/store/index.ts`，支持 dot-notation key
+- **SQLite 数据库**：`better-sqlite3`，WAL 模式，位于 `%APPDATA%/electron-vue-template/narrative-mining.db`
+- **日志系统**：`electron-log`，日志位于 `%APPDATA%/electron-vue-template/logs/`
 
-主进程和渲染进程通过 IPC 通信，类型定义在 `src/shared/types.ts`。
+## 数据层规则
 
-**渲染进程调用主进程：**
+- **better-sqlite3 必须外部化**：`vite.main.config.ts` 的 `rollupOptions.external` 必须包含 `'better-sqlite3'`，否则构建失败
+- **同步表的 id 用 `INTEGER PRIMARY KEY`，不加 AUTOINCREMENT**：`raw_messages` 和 `narratives` 的 `id` 来自远程 API，AUTOINCREMENT 会导致 INSERT OR REPLACE 时 id 跑偏，增量同步判断失效
+- **FTS 索引随数据写入**：`SyncService` 在同一事务中写入数据行 + FTS 行，不单独重建索引
+- **增量同步基于 max_id**：`sync_state` 表存储 `max_raw_id` / `max_narrative_id`，每批检查 `item.id > lastMaxId`，全批旧记录时提前终止
+- **Schema 变更需要重建数据库**：`CREATE TABLE IF NOT EXISTS` 不修改已存在的表，改 schema 后需删除旧 `.db` 文件
+- **FTS INSERT 必须显式指定 rowid**：FTS5 的冲突检测基于隐式 rowid，不是 UNINDEXED 的 row_id 列。INSERT 缺少 rowid 会导致 INSERT OR REPLACE 失效、每次同步追加重复行。写入格式：`INSERT INTO fts (rowid, row_id, text) VALUES (?, ?, ?)`
+- **FTS 提取函数必须覆盖表的全部列**：`extractXxxFtsText` 的字段变更后递增 `FTS_VERSION`（database/index.ts），下次启动自动重建索引
+- **FTS 搜索策略**：unicode61 分词器不拆分 CJK 连续字符（整个中文短语是一个 token），连字符是分隔符。`toFtsQuery` 对简单词用裸前缀 `term*`，含特殊字符（`-`, `.`, `:`, `*`, `(`, `)`, `"`, 空格）用引号包裹 `"term"`。`*` 只能跟裸词，不能跟引号短语。搜索前对输入做 `trim()` 检查，空字符串不能进 MATCH
 
-```typescript
-const version = await window.electronAPI.app.getVersion();
-```
+## TypeScript 配置
 
-**主进程处理：**
-
-```typescript
-ipcMain.handle('app:getVersion', () => app.getVersion());
-```
-
-### 2. 数据存储
-
-使用 `electron-store` 进行持久化存储，配置在 `src/main/store/index.ts`。
-
-```typescript
-// 渲染进程
-await window.electronAPI.store.set('key', value);
-const value = await window.electronAPI.store.get('key');
-```
-
-### 3. 系统托盘
-
-托盘配置在 `src/main/tray/index.ts`，支持：
-
-- 自定义图标
-- 右键菜单
-- 双击显示窗口
-
-### 4. 自动更新
-
-使用 `electron-updater`，配置在 `src/main/updater/index.ts`。
-
-```typescript
-// 渲染进程监听更新事件
-window.electronAPI.updater.onUpdateAvailable((info) => {
-  console.log('发现新版本:', info.version);
-});
-```
-
-### 5. 多窗口管理
-
-通过 `WindowManager` 管理多个窗口：
-
-```typescript
-await window.electronAPI.window.create({
-  name: '子窗口',
-  title: '设置',
-  width: 400,
-  height: 300,
-});
-```
-
-### 6. 日志系统
-
-使用 `electron-log`，日志文件位于：
-
-- Windows: `%USERPROFILE%/AppData/Roaming/electron-vue-app/logs/`
-- macOS: `~/Library/Logs/electron-vue-app/`
-- Linux: `~/.config/electron-vue-app/logs/`
+- 根 `tsconfig.json` 不使用 project references（Vite 自行处理构建）
+- 三个子配置（`tsconfig.main.json` / `tsconfig.preload.json` / `tsconfig.renderer.json`）独立运行，均设 `noEmit: true` + `skipLibCheck: true`
+- preload 的 tsconfig 不能设 `rootDir`（会阻止 `src/shared/` 被包含）
+- renderer 需要 `src/renderer/src/env.d.ts` 声明 `.vue` 模块
 
 ## AI 智能体指引
 
-### 添加新功能
+### 添加新功能流程
 
-1. **主进程功能**：在 `src/main/` 下创建模块
-2. **IPC 通信**：
-   - 在 `src/shared/constants.ts` 添加频道名称
-   - 在 `src/shared/types.ts` 添加类型定义
-   - 在 `src/preload/index.ts` 暴露 API
-   - 在 `src/main/ipc/handlers.ts` 添加处理器
-3. **渲染进程**：在 `src/renderer/src/` 下创建组件或页面
+1. `src/shared/types.ts` 添加类型 + `src/shared/constants.ts` 添加 IPC 频道
+2. `src/main/services/` 实现业务逻辑
+3. `src/main/ipc/handlers.ts` 注册处理器
+4. `src/preload/index.ts` 暴露 API
+5. `src/renderer/src/views/` 创建组件
 
-### 常用命令
+### 红线
 
-- 添加依赖：`npm install <package>`
-- 添加开发依赖：`npm install -D <package>`
-- 运行测试：`npm test`（如已配置）
-
-### 注意事项
-
-1. 渲染进程不能直接访问 Node.js API，必须通过 IPC
-2. 预加载脚本是安全的桥梁，使用 `contextBridge` 暴露 API
-3. 所有 IPC 通信应有 TypeScript 类型定义
-4. 敏感操作应在主进程处理
+- 渲染进程不能直接访问 Node.js API，必须通过 IPC
+- 所有 IPC 通信必须有 TypeScript 类型定义
+- 敏感操作在主进程处理
 
 ## 故障排查
 
-### 依赖安装失败（网络问题）
-
-**问题现象：** `npm install` 时报 `ECONNRESET` 或 `ETIMEDOUT` 错误，通常是 Electron 二进制下载失败。
-
-**根本原因：** Electron 安装脚本会单独下载二进制文件（约 80MB），该下载不走 npm 代理设置，需要单独配置镜像源。
-
-**解决方案（Windows）：**
-
-```powershell
-# 1. 开启代理（解决 npm 包下载，前提是已经预定义了此代理开启命令且代理服务正常运行）
-proxy
-
-# 2. 设置 Electron 国内镜像（解决 Electron 二进制下载）
-$env:ELECTRON_MIRROR='https://npmmirror.com/mirrors/electron/'
-
-# 3. 安装依赖
-npm install
-```
-
-**其他镜像源（备选）：**
-
-- 淘宝镜像：`https://npmmirror.com/mirrors/electron/`
-- 官方镜像：`https://github.com/electron/electron/releases/download/`
-
-**永久配置（可选）：**
-
-在系统环境变量中添加：
-
-```
-ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
-```
-
-### 其他常见问题
-
-1. **应用无法启动**
-
-   - 检查 Node.js 版本（推荐 18+）
-   - 删除 `node_modules` 重新安装
-2. **IPC 调用失败**
-
-   - 检查频道名称是否一致
-   - 检查预加载脚本是否正确暴露 API
-3. **构建失败**
-
-   - 检查 TypeScript 类型错误
-   - 运行 `npm run lint` 检查代码规范
+- **npm install 失败**：设置 `$env:ELECTRON_MIRROR='https://npmmirror.com/mirrors/electron/'` 后重装
+- **better-sqlite3 构建失败**：`npx electron-rebuild -f -w better-sqlite3`
+- **同步数据不更新**：Schema 变更后需删除 `%APPDATA%/electron-vue-template/narrative-mining.db` 重建
+- **TypeScript 报错**：清理 `.vite/build/` 后重试；三个子项目用各自的 tsconfig 独立检查
 
 ## 相关文档
 

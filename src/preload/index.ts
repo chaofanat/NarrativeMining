@@ -1,6 +1,19 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '../shared/constants';
-import type { ElectronAPI, CreateWindowOptions, UpdateInfo, UpdateProgress } from '../shared/types';
+import type {
+  ElectronAPI,
+  CreateWindowOptions,
+  UpdateInfo,
+  UpdateProgress,
+  SyncProgress,
+  SyncState,
+  RawQueryOptions,
+  NarrativeQueryOptions,
+  PaginatedResult,
+  RawMessageRow,
+  NarrativeRow,
+  RemoteStats,
+} from '../shared/types';
 
 const electronAPI: ElectronAPI = {
   app: {
@@ -46,6 +59,35 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.on(IPC_CHANNELS.UPDATER_UPDATE_DOWNLOADED, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATER_UPDATE_DOWNLOADED, handler);
     },
+  },
+  data: {
+    // 同步操作
+    startSync: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC_START) as Promise<SyncState>,
+    getSyncStatus: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC_STATUS) as Promise<SyncState>,
+    cancelSync: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC_CANCEL) as Promise<void>,
+    restartAutoSync: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC_RESTART_TIMER) as Promise<void>,
+    onSyncProgress: (callback: (progress: SyncProgress) => void) => {
+      const handler = (_: unknown, progress: SyncProgress) => callback(progress);
+      ipcRenderer.on(IPC_CHANNELS.SYNC_PROGRESS, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.SYNC_PROGRESS, handler);
+    },
+    // 原始数据
+    listRaw: (options?: RawQueryOptions) =>
+      ipcRenderer.invoke(IPC_CHANNELS.RAW_LIST, options) as Promise<PaginatedResult<RawMessageRow>>,
+    getRaw: (id: number) =>
+      ipcRenderer.invoke(IPC_CHANNELS.RAW_GET, id) as Promise<RawMessageRow | null>,
+    getRawCount: () => ipcRenderer.invoke(IPC_CHANNELS.RAW_COUNT) as Promise<number>,
+    // 叙事数据
+    listNarratives: (options?: NarrativeQueryOptions) =>
+      ipcRenderer.invoke(IPC_CHANNELS.NARRATIVE_LIST, options) as Promise<PaginatedResult<NarrativeRow>>,
+    getNarrative: (narrativeId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.NARRATIVE_GET, narrativeId) as Promise<NarrativeRow | null>,
+    getNarrativeByRawId: (rawId: number) =>
+      ipcRenderer.invoke(IPC_CHANNELS.NARRATIVE_BY_RAW_ID, rawId) as Promise<NarrativeRow | null>,
+    getNarrativeCount: () => ipcRenderer.invoke(IPC_CHANNELS.NARRATIVE_COUNT) as Promise<number>,
+    // 远程
+    getRemoteStats: () => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_STATS) as Promise<RemoteStats>,
+    checkRemoteHealth: () => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_HEALTH) as Promise<{ status: string }>,
   },
 };
 

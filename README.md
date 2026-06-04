@@ -115,27 +115,16 @@ npm run format
 ├── src/
 │   ├── main/                    # 主进程 (Node.js 环境)
 │   │   ├── index.ts             # 应用入口
-│   │   ├── window/              # 窗口管理
+│   │   ├── database/            # SQLite 数据库初始化 + FTS 索引
+│   │   ├── services/            # 业务逻辑 (API + 同步 + 查询)
 │   │   ├── ipc/                 # IPC 通信
-│   │   ├── tray/                # 系统托盘
-│   │   ├── updater/             # 自动更新
-│   │   ├── store/               # 数据存储
+│   │   ├── store/               # 配置存储
 │   │   ├── logger/              # 日志系统
-│   │   └── crash/               # 崩溃报告
+│   │   └── window/              # 窗口管理
 │   ├── preload/                 # 预加载脚本
-│   │   └── index.ts
 │   ├── renderer/                # 渲染进程 (Vue 3)
-│   │   └── src/
-│   │       ├── App.vue          # 根组件
-│   │       ├── router/          # 路由配置
-│   │       ├── views/           # 页面组件
-│   │       ├── components/      # 通用组件
-│   │       └── styles/          # 样式文件
-│   └── shared/                  # 共享代码
-│       ├── types.ts             # 类型定义
-│       └── constants.ts         # 常量定义
-├── resources/                   # 静态资源
-├── CLAUDE.md                    # 开发文档
+│   └── shared/                  # 共享类型 + 常量
+├── CLAUDE.md                    # AI 开发规则
 └── package.json
 ```
 

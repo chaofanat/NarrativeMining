@@ -22,6 +22,35 @@
       </div>
 
       <div class="settings-section">
+        <h2>数据同步</h2>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">自动同步</span>
+            <span class="setting-desc">启动后自动定时拉取远程数据到本地数据库</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" v-model="settings.autoSync" @change="saveSyncSettings" />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">同步间隔</span>
+            <span class="setting-desc">每隔多少分钟自动同步一次</span>
+          </div>
+          <select v-model="settings.syncInterval" @change="saveSyncSettings" :disabled="!settings.autoSync">
+            <option :value="1">1 分钟</option>
+            <option :value="3">3 分钟</option>
+            <option :value="5">5 分钟</option>
+            <option :value="10">10 分钟</option>
+            <option :value="15">15 分钟</option>
+            <option :value="30">30 分钟</option>
+            <option :value="60">60 分钟</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <h2>行为</h2>
         <div class="setting-item">
           <div class="setting-info">
@@ -87,32 +116,31 @@ const settings = ref({
   startupBehavior: 'restore',
   closeToTray: true,
   autoUpdate: true,
+  autoSync: true,
+  syncInterval: 5,
 });
 
-// 监听主题变化
 watch(() => settings.value.theme, (newTheme) => {
   setTheme(newTheme);
 });
 
 onMounted(async () => {
   if (window.electronAPI) {
-    // 加载应用版本
     appVersion.value = await window.electronAPI.app.getVersion();
 
-    // 加载主题设置
     const savedTheme = await window.electronAPI.store.get<string>('user.preferences.theme');
     if (savedTheme) {
       settings.value.theme = savedTheme as any;
     }
 
-    // 加载应用设置
     const appSettings = await window.electronAPI.store.get<any>('app.settings');
     if (appSettings) {
       settings.value.closeToTray = appSettings.closeToTray ?? true;
       settings.value.autoUpdate = appSettings.autoUpdate ?? true;
+      settings.value.autoSync = appSettings.autoSync ?? true;
+      settings.value.syncInterval = appSettings.syncIntervalMinutes ?? 5;
     }
 
-    // 加载启动行为
     const startupBehavior = await window.electronAPI.store.get<string>('user.preferences.startupBehavior');
     if (startupBehavior) {
       settings.value.startupBehavior = startupBehavior;
@@ -122,15 +150,20 @@ onMounted(async () => {
 
 const saveSettings = async () => {
   if (window.electronAPI) {
-    // 保存主题设置
     await window.electronAPI.store.set('user.preferences.theme', settings.value.theme);
     await window.electronAPI.store.set('user.preferences.startupBehavior', settings.value.startupBehavior);
-
-    // 保存应用设置
     await window.electronAPI.store.set('app.settings.closeToTray', settings.value.closeToTray);
     await window.electronAPI.store.set('app.settings.autoUpdate', settings.value.autoUpdate);
-
     await window.electronAPI.log.info('设置已保存');
+  }
+};
+
+const saveSyncSettings = async () => {
+  if (window.electronAPI) {
+    await window.electronAPI.store.set('app.settings.autoSync', settings.value.autoSync);
+    await window.electronAPI.store.set('app.settings.syncIntervalMinutes', settings.value.syncInterval);
+    await window.electronAPI.data.restartAutoSync();
+    await window.electronAPI.log.info(`同步设置已更新: 自动=${settings.value.autoSync}, 间隔=${settings.value.syncInterval}分钟`);
   }
 };
 
@@ -225,6 +258,11 @@ select {
   background: var(--bg-color);
   color: var(--text-color);
   min-width: 150px;
+}
+
+select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .switch {

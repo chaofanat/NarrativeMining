@@ -2,11 +2,27 @@ import { ipcMain, app } from 'electron';
 import { channels } from './channels';
 import { WindowManager } from '../window/WindowManager';
 import { checkForUpdates, downloadUpdate, installUpdate } from '../updater';
-import type { Store } from 'electron-store';
+import { SyncService } from '../services/SyncService';
+import { RawMessageService } from '../services/RawMessageService';
+import { NarrativeService } from '../services/NarrativeService';
+import { ApiClient } from '../services/ApiClient';
+import type { AppStore } from '../store';
 import type { Logger } from 'electron-log';
-import type { CreateWindowOptions } from '../../shared/types';
+import type {
+  CreateWindowOptions,
+  RawQueryOptions,
+  NarrativeQueryOptions,
+} from '../../shared/types';
 
-export function setupIPC(windowManager: WindowManager, store: Store, logger: Logger): void {
+export function setupIPC(
+  windowManager: WindowManager,
+  store: AppStore,
+  logger: Logger,
+  syncService: SyncService,
+  rawService: RawMessageService,
+  narrativeService: NarrativeService,
+  apiClient: ApiClient,
+): void {
   // 应用信息
   ipcMain.handle(channels.app.getVersion, () => {
     return app.getVersion();
@@ -86,6 +102,62 @@ export function setupIPC(windowManager: WindowManager, store: Store, logger: Log
 
   ipcMain.handle(channels.updater.install, () => {
     installUpdate();
+  });
+
+  // 数据同步
+  ipcMain.handle(channels.sync.start, async () => {
+    return syncService.startSync();
+  });
+
+  ipcMain.handle(channels.sync.status, () => {
+    return syncService.getSyncState();
+  });
+
+  ipcMain.handle(channels.sync.cancel, () => {
+    syncService.cancelSync();
+  });
+
+  ipcMain.handle(channels.sync.restartTimer, () => {
+    syncService.restartAutoSync();
+  });
+
+  // 原始数据
+  ipcMain.handle(channels.raw.list, (_, options?: RawQueryOptions) => {
+    return rawService.list(options || {});
+  });
+
+  ipcMain.handle(channels.raw.get, (_, id: number) => {
+    return rawService.getById(id);
+  });
+
+  ipcMain.handle(channels.raw.count, () => {
+    return rawService.count();
+  });
+
+  // 叙事数据
+  ipcMain.handle(channels.narrative.list, (_, options?: NarrativeQueryOptions) => {
+    return narrativeService.list(options || {});
+  });
+
+  ipcMain.handle(channels.narrative.get, (_, narrativeId: string) => {
+    return narrativeService.getByNarrativeId(narrativeId);
+  });
+
+  ipcMain.handle(channels.narrative.byRawId, (_, rawId: number) => {
+    return narrativeService.getByRawId(rawId);
+  });
+
+  ipcMain.handle(channels.narrative.count, () => {
+    return narrativeService.count();
+  });
+
+  // 远程 API
+  ipcMain.handle(channels.remote.stats, async () => {
+    return apiClient.getStats();
+  });
+
+  ipcMain.handle(channels.remote.health, async () => {
+    return apiClient.healthCheck();
   });
 
   logger.info('IPC 处理器已注册');
