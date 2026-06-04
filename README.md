@@ -1,6 +1,8 @@
-# Electron Vue Template
+# NarrativeMining
 
-基于 Electron + Vue 3 + TypeScript 的桌面应用最佳实践模板。
+金融新闻叙事挖掘桌面应用 — 远程数据同步、FTS5 全文检索、AI 叙事分析查询。
+
+基于 Electron + Vue 3 + TypeScript，采用 MSVB 架构模式。
 
 ## 技术栈
 
@@ -8,30 +10,31 @@
 - **Vue 3** - 前端框架（Composition API）
 - **TypeScript** - 类型安全
 - **Vite 5** - 构建工具
+- **SQLite**（better-sqlite3 + FTS5） - 本地全文检索数据库
 - **Electron Forge** - 打包和分发
-- **Pinia** - 状态管理
-- **Vue Router** - 路由管理
 
 ## 特性
 
+- 远程 API 数据同步（自动/手动，增量同步）
+- 原始消息与叙事分析数据的本地存储与查询
+- FTS5 中文全文检索（前缀匹配、全字段覆盖）
+- 叙事分析多维度筛选（趋势、模式、情绪、强度等）
+- 自动同步间隔可配置
 - 完整的 MSVB 架构（Model → Service → View → Bridge）
-- 系统托盘支持
-- 自动更新（electron-updater）
+- 浅色/深色主题切换
 - 数据持久化（electron-store）
 - 日志系统（electron-log）
-- 崩溃报告
-- 多窗口管理
-- 浅色/深色主题切换
-- 中文菜单栏
-- ESLint + Prettier 代码规范
 - 完整的 TypeScript 类型定义
 
 ## 快速开始
 
+```bash
+npm install
+npm run dev
+```
+
 ### 使用模板创建新项目
 
-**方式一：GitHub CLI**
-
 ```bash
 gh repo create my-app --template chaofanat/electron-vue-template
 cd my-app
@@ -39,34 +42,11 @@ npm install
 npm run dev
 ```
 
-**方式二：GitHub 网页**
+或通过 GitHub 网页点击 "Use this template" 按钮，克隆后执行 `npm install && npm run dev`。
 
-1. 点击页面顶部的 "Use this template" 按钮
-2. 选择 "Create a new repository"
-3. 克隆新仓库到本地
+### 网络问题
 
-```bash
-git clone https://github.com/your-username/my-app.git
-cd my-app
-npm install
-npm run dev
-```
-
-**方式三： Claude Code 自动使用gh进行新项目创建**
-
-复制以下内容给Claude Code，它会自动创建一个新的仓库并使用模板初始化项目：
-
-```bash
-我想使用模板创建一个新的 Electron + Vue 3 + TypeScript 项目，项目名称为 my-app,你使用以下命令即可：
-gh repo create my-app --template chaofanat/electron-vue-template
-cd my-app
-npm install
-npm run dev
-```
-
-### 网络问题处理
-
-如果 `npm install` 时遇到网络问题（Electron 下载失败）：
+Electron 下载失败时设置镜像源：
 
 ```bash
 # Windows
@@ -150,43 +130,38 @@ Model  → Service → View  → Bridge
 
 ## 核心功能
 
-### IPC 通信
+### 数据同步
+
+连接远程 API 拉取金融新闻原始消息和 AI 叙事分析数据，存储到本地 SQLite。
 
 ```typescript
-// 渲染进程调用主进程
-const version = await window.electronAPI.app.getVersion();
+// 手动同步
+await window.electronAPI.data.startSync();
+
+// 获取同步状态
+const state = await window.electronAPI.data.getSyncStatus();
+// { lastSyncTime, rawCount, narrativeCount, isSyncing }
 ```
 
-### 数据存储
+### 全文搜索
+
+FTS5 全文检索，支持中文前缀匹配和全字段覆盖。
 
 ```typescript
-// 保存数据
-await window.electronAPI.store.set('key', value);
+// 搜索原始消息
+const result = await window.electronAPI.data.listRaw({ search: '利弗莫尔' });
 
-// 读取数据
-const value = await window.electronAPI.store.get('key');
-```
-
-### 主题切换
-
-```typescript
-// 切换主题
-import { useTheme } from './composables/useTheme';
-const { setTheme } = useTheme();
-setTheme('dark'); // 'light' | 'dark' | 'system'
-```
-
-### 多窗口管理
-
-```typescript
-// 创建子窗口
-await window.electronAPI.window.create({
-  name: '设置',
-  title: '应用设置',
-  width: 400,
-  height: 300,
+// 搜索叙事数据（可组合筛选）
+const result = await window.electronAPI.data.listNarratives({
+  search: '俄罗斯',
+  text_type: '政策发布',
+  narrative_trend: '利好',
 });
 ```
+
+### 自动同步
+
+设置页面可配置自动同步开关和间隔（1-60 分钟），启动后自动拉取新增数据。
 
 ## 文档
 
