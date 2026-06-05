@@ -1,7 +1,7 @@
 {
-  "name": "electron-vue-template",
+  "name": "narrative-mining",
   "version": "1.0.0",
-  "description": "Electron + Vue 3 + TypeScript 最佳实践模板",
+  "description": "金融叙事挖掘桌面应用",
   "main": ".vite/build/main/index.js",
   "scripts": {
     "dev": "electron-forge start",
@@ -49,6 +49,6 @@
     "vite",
     "template"
   ],
-  "author": "Electron Vue Template",
+  "author": "chaofanat",
   "license": "MIT"
 }

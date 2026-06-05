@@ -88,6 +88,8 @@ const electronAPI: ElectronAPI = {
     // 远程
     getRemoteStats: () => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_STATS) as Promise<RemoteStats>,
     checkRemoteHealth: () => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_HEALTH) as Promise<{ status: string }>,
+    // 数据库操作
+    clearAllData: () => ipcRenderer.invoke(IPC_CHANNELS.DB_CLEAR_ALL) as Promise<void>,
   },
 };
 

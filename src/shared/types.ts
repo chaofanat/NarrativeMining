@@ -243,6 +243,9 @@ export interface IPCChannels {
   // 远程 API
   'remote:stats': () => RemoteStats;
   'remote:health': () => { status: string };
+
+  // 数据库操作
+  'db:clearAll': () => void;
 }
 
 export interface CreateWindowOptions {
@@ -328,6 +331,8 @@ export interface ElectronAPI {
     // 远程
     getRemoteStats: () => Promise<RemoteStats>;
     checkRemoteHealth: () => Promise<{ status: string }>;
+    // 数据库操作
+    clearAllData: () => Promise<void>;
   };
 }
 

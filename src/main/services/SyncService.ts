@@ -208,7 +208,7 @@ export class SyncService {
       // 如果本批次全部是旧记录（id 都 <= lastMaxId），说明增量同步完成
       if (batchNew === 0) break;
 
-      offset += limit;
+      offset += items.length;
     }
 
     // 更新 max_raw_id
@@ -242,6 +242,9 @@ export class SyncService {
       INSERT OR REPLACE INTO narratives_fts (rowid, row_id, text) VALUES (?, ?, ?)
     `);
 
+    const prevFk = this.db.pragma('foreign_keys', { simple: true });
+    this.db.pragma('foreign_keys = OFF');
+    try {
     const insertBatch = this.db.transaction((items: any[]) => {
       for (const item of items) {
         insertStmt.run(
@@ -306,7 +309,7 @@ export class SyncService {
 
       if (batchNew === 0) break;
 
-      offset += limit;
+      offset += items.length;
     }
 
     const maxRow = this.db.prepare('SELECT MAX(id) as m FROM narratives').get() as { m: number | null };
@@ -315,6 +318,9 @@ export class SyncService {
     }
 
     this.logger.info(`叙事数据同步完成, 新增 ${fetched} 条`);
+    } finally {
+      this.db.pragma(`foreign_keys = ${prevFk}`);
+    }
   }
 
   cancelSync(): void {

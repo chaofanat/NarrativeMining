@@ -74,6 +74,9 @@ export const IPC_CHANNELS = {
   // 远程 API
   REMOTE_STATS: 'remote:stats',
   REMOTE_HEALTH: 'remote:health',
+
+  // 数据库操作
+  DB_CLEAR_ALL: 'db:clearAll',
 } as const;
 
 // 存储键名

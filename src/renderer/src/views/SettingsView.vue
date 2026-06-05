@@ -90,6 +90,19 @@
       </div>
 
       <div class="settings-section">
+        <h2>数据管理</h2>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">清除本地数据</span>
+            <span class="setting-desc">删除本地数据库中所有原始消息、叙事分析和索引数据</span>
+          </div>
+          <button class="danger-button" @click="handleClearData" :disabled="clearing">
+            {{ clearing ? '清除中...' : '清除数据' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <h2>关于</h2>
         <div class="setting-item">
           <div class="setting-info">
@@ -164,6 +177,28 @@ const saveSyncSettings = async () => {
     await window.electronAPI.store.set('app.settings.syncIntervalMinutes', settings.value.syncInterval);
     await window.electronAPI.data.restartAutoSync();
     await window.electronAPI.log.info(`同步设置已更新: 自动=${settings.value.autoSync}, 间隔=${settings.value.syncInterval}分钟`);
+  }
+};
+
+const clearing = ref(false);
+
+const handleClearData = async () => {
+  if (!window.electronAPI) return;
+  const confirmed = confirm('确定要清除所有本地数据吗？此操作不可撤销。');
+  if (!confirmed) return;
+  const secondConfirm = confirm('再次确认：清除后所有本地数据将丢失，需要重新同步。是否继续？');
+  if (!secondConfirm) return;
+
+  clearing.value = true;
+  try {
+    await window.electronAPI.data.clearAllData();
+    await window.electronAPI.log.info('用户已清除本地数据库');
+    alert('本地数据已清除');
+  } catch (err) {
+    await window.electronAPI.log.error(`清除数据失败: ${err}`);
+    alert('清除数据失败，请查看日志');
+  } finally {
+    clearing.value = false;
   }
 };
 
@@ -308,5 +343,26 @@ input:checked + .slider {
 
 input:checked + .slider:before {
   transform: translateX(22px);
+}
+
+.danger-button {
+  padding: 8px 16px;
+  border: 1px solid #e74c3c;
+  background: transparent;
+  color: #e74c3c;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.danger-button:hover:not(:disabled) {
+  background: #e74c3c;
+  color: white;
+}
+
+.danger-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

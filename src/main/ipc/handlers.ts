@@ -6,6 +6,7 @@ import { SyncService } from '../services/SyncService';
 import { RawMessageService } from '../services/RawMessageService';
 import { NarrativeService } from '../services/NarrativeService';
 import { ApiClient } from '../services/ApiClient';
+import { clearAllData, getDatabase } from '../database';
 import type { AppStore } from '../store';
 import type { Logger } from 'electron-log';
 import type {
@@ -158,6 +159,12 @@ export function setupIPC(
 
   ipcMain.handle(channels.remote.health, async () => {
     return apiClient.healthCheck();
+  });
+
+  // 数据库操作
+  ipcMain.handle(channels.db.clearAll, () => {
+    clearAllData(getDatabase());
+    logger.info('数据库已清空');
   });
 
   logger.info('IPC 处理器已注册');

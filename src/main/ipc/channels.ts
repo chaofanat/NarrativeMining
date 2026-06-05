@@ -64,4 +64,8 @@ export const channels = {
     stats: IPC_CHANNELS.REMOTE_STATS,
     health: IPC_CHANNELS.REMOTE_HEALTH,
   },
+  // 数据库操作
+  db: {
+    clearAll: IPC_CHANNELS.DB_CLEAR_ALL,
+  },
 } as const;

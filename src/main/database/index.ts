@@ -261,3 +261,13 @@ export function closeDatabase(): void {
     db = null;
   }
 }
+
+export function clearAllData(db: Database.Database): void {
+  db.transaction(() => {
+    db.exec('DELETE FROM raw_messages_fts');
+    db.exec('DELETE FROM narratives_fts');
+    db.exec('DELETE FROM narratives');
+    db.exec('DELETE FROM raw_messages');
+    db.exec('DELETE FROM sync_state');
+  })();
+}
