@@ -68,4 +68,22 @@ export const channels = {
   db: {
     clearAll: IPC_CHANNELS.DB_CLEAR_ALL,
   },
+  // 向量嵌入
+  embedding: {
+    status: IPC_CHANNELS.EMBEDDING_STATUS,
+    start: IPC_CHANNELS.EMBEDDING_START,
+    cancel: IPC_CHANNELS.EMBEDDING_CANCEL,
+    progress: IPC_CHANNELS.EMBEDDING_PROGRESS,
+    getConfig: IPC_CHANNELS.EMBEDDING_GET_CONFIG,
+    saveConfig: IPC_CHANNELS.EMBEDDING_SAVE_CONFIG,
+  },
+  // 向量搜索
+  vector: {
+    search: IPC_CHANNELS.VECTOR_SEARCH,
+  },
+  // 聚类分析
+  clustering: {
+    run: IPC_CHANNELS.CLUSTERING_RUN,
+    details: IPC_CHANNELS.CLUSTERING_DETAILS,
+  },
 } as const;

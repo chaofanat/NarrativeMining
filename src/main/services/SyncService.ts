@@ -19,6 +19,7 @@ export class SyncService {
     private logger: Logger,
     private getAutoSync: () => boolean,
     private getSyncInterval: () => number,
+    private onSyncComplete?: () => void,
   ) {}
 
   startAutoSync(): void {
@@ -121,6 +122,10 @@ export class SyncService {
       this.setSyncState('lastSyncTime', localTime);
       this.emitProgress({ phase: 'done', fetched: 0, total: 0, message: '同步完成' });
       this.logger.info('数据同步完成');
+
+      if (this.onSyncComplete) {
+        this.onSyncComplete();
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`同步失败: ${message}`);

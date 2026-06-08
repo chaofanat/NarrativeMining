@@ -1,11 +1,12 @@
 import { app } from 'electron';
 import path from 'path';
 import Database from 'better-sqlite3';
+import * as sqliteVec from 'sqlite-vec';
 import type { Logger } from 'electron-log';
 
 let db: Database.Database | null = null;
 
-export function setupDatabase(logger: Logger): Database.Database {
+export function setupDatabase(logger: Logger, vecDimensions = 1536): Database.Database {
   const dbPath = path.join(app.getPath('userData'), 'narrative-mining.db');
   logger.info(`数据库路径: ${dbPath}`);
 
@@ -13,6 +14,9 @@ export function setupDatabase(logger: Logger): Database.Database {
 
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
+
+  sqliteVec.load(db);
+  logger.info('sqlite-vec 扩展已加载');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS raw_messages (
@@ -69,6 +73,11 @@ export function setupDatabase(logger: Logger): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_narrative_publish_time ON narratives(publish_time);
     CREATE INDEX IF NOT EXISTS idx_narrative_sentiment ON narratives(sentiment_score);
   `);
+
+  // sqlite-vec: 按配置维度创建/重建 vec 表
+  if (ensureVecDimensions(db, vecDimensions)) {
+    logger.info(`向量维度已设置为 ${vecDimensions}`);
+  }
 
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS raw_messages_fts USING fts5(
@@ -266,8 +275,26 @@ export function clearAllData(db: Database.Database): void {
   db.transaction(() => {
     db.exec('DELETE FROM raw_messages_fts');
     db.exec('DELETE FROM narratives_fts');
+    db.exec('DELETE FROM narrative_vec');
     db.exec('DELETE FROM narratives');
     db.exec('DELETE FROM raw_messages');
     db.exec('DELETE FROM sync_state');
   })();
+}
+
+const VEC_SCHEMA_VERSION = 2;
+
+export function ensureVecDimensions(db: Database.Database, dims: number): boolean {
+  const dimRow = db.prepare("SELECT value FROM sync_state WHERE key = 'vec_dimensions'").get() as { value: string } | undefined;
+  const storedDims = dimRow ? Number(dimRow.value) : 0;
+  const verRow = db.prepare("SELECT value FROM sync_state WHERE key = 'vec_schema_version'").get() as { value: string } | undefined;
+  const storedVer = verRow ? Number(verRow.value) : 0;
+
+  if (storedDims === dims && storedVer >= VEC_SCHEMA_VERSION) return false;
+
+  db.exec('DROP TABLE IF EXISTS narrative_vec');
+  db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS narrative_vec USING vec0(embedding float[${dims}], publish_time text)`);
+  db.prepare("INSERT OR REPLACE INTO sync_state (key, value) VALUES ('vec_dimensions', ?)").run(String(dims));
+  db.prepare("INSERT OR REPLACE INTO sync_state (key, value) VALUES ('vec_schema_version', ?)").run(String(VEC_SCHEMA_VERSION));
+  return true;
 }

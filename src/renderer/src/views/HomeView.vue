@@ -37,6 +37,10 @@
         <div class="stat-value">{{ remoteStats?.avg_intensity?.toFixed(2) ?? '-' }}</div>
         <div class="stat-label">平均强度</div>
       </div>
+      <div class="stat-card" v-if="embeddingStatus">
+        <div class="stat-value">{{ embeddingStatus.embeddedCount }}/{{ embeddingStatus.totalNarratives }}</div>
+        <div class="stat-label">向量嵌入</div>
+      </div>
     </div>
 
     <!-- 选项卡 -->
@@ -46,6 +50,12 @@
       </button>
       <button class="tab" :class="{ active: activeTab === 'narrative' }" @click="activeTab = 'narrative'">
         叙事分析
+      </button>
+      <button class="tab" :class="{ active: activeTab === 'cluster' }" @click="activeTab = 'cluster'">
+        聚类分析
+      </button>
+      <button class="tab" :class="{ active: activeTab === 'search' }" @click="activeTab = 'search'">
+        语义搜索
       </button>
     </div>
 
@@ -194,6 +204,144 @@
       </div>
     </div>
 
+    <!-- 聚类分析 -->
+    <div v-if="activeTab === 'cluster'" class="tab-content">
+      <div class="filter-bar">
+        <label class="filter-label">时间范围</label>
+        <div class="time-shortcuts">
+          <button class="btn btn-small" :class="{ 'btn-primary': activeShortcut === 1 }" @click="setTimeRange(1)">近1天</button>
+          <button class="btn btn-small" :class="{ 'btn-primary': activeShortcut === 3 }" @click="setTimeRange(3)">近3天</button>
+          <button class="btn btn-small" :class="{ 'btn-primary': activeShortcut === 7 }" @click="setTimeRange(7)">近1周</button>
+          <button class="btn btn-small" :class="{ 'btn-primary': activeShortcut === 30 }" @click="setTimeRange(30)">近1月</button>
+        </div>
+        <input type="datetime-local" v-model="clusterOptions.timeStart" class="search-input" style="flex:0;min-width:180px" @change="activeShortcut = 0" />
+        <span>~</span>
+        <input type="datetime-local" v-model="clusterOptions.timeEnd" class="search-input" style="flex:0;min-width:180px" @change="activeShortcut = 0" />
+        <label class="filter-label">最小簇</label>
+        <input type="number" v-model.number="clusterOptions.minClusterSize" min="2" max="50" class="search-input" style="flex:0;min-width:60px;width:60px" />
+        <label class="filter-label">核心邻域</label>
+        <input type="number" v-model.number="clusterOptions.minSamples" min="1" max="50" placeholder="2" class="search-input" style="flex:0;min-width:60px;width:60px" />
+        <label class="filter-label">降维维数</label>
+        <input type="number" v-model.number="clusterOptions.reducedDimensions" min="0" max="500" placeholder="20" class="search-input" style="flex:0;min-width:60px;width:60px" />
+        <button class="btn btn-primary btn-small" @click="handleRunClustering" :disabled="clusterLoading">
+          {{ clusterLoading ? '聚类中...' : '执行聚类' }}
+        </button>
+      </div>
+
+      <div class="advanced-toggle" @click="showAdvanced = !showAdvanced">
+        <span class="advanced-arrow" :class="{ expanded: showAdvanced }">&#9654;</span>
+        <span>高级参数</span>
+      </div>
+      <div class="filter-bar advanced-params" v-if="showAdvanced">
+        <label class="filter-label">nNeighbors</label>
+        <input type="number" v-model.number="clusterOptions.umapNNeighbors" min="2" max="200" placeholder="15" class="search-input" style="flex:0;min-width:60px;width:60px" />
+        <span class="param-hint">邻域大小，越大越保留全局结构</span>
+        <label class="filter-label">minDist</label>
+        <input type="number" v-model.number="clusterOptions.umapMinDist" min="0" max="1" step="0.05" placeholder="0.1" class="search-input" style="flex:0;min-width:60px;width:60px" />
+        <span class="param-hint">嵌入紧密度，越低簇越密</span>
+      </div>
+
+      <div class="cluster-info" v-if="clusteringResult">
+        <span>共 {{ clusteringResult.totalItems }} 条数据，发现 {{ clusteringResult.clusters.length }} 个簇，{{ clusteringResult.noiseCount }} 条噪声</span>
+        <span v-if="pcaReducedDims" class="cluster-pca-info">UMAP: {{ pcaReducedDims }}d</span>
+      </div>
+
+      <div class="data-list">
+        <div v-if="clusterLoading" class="loading">正在执行 HDBSCAN 聚类...</div>
+        <div v-else-if="!clusteringResult" class="empty">选择时间范围后点击「执行聚类」</div>
+        <div v-else-if="clusteringResult.clusters.length === 0" class="empty">未发现有效聚类，请调整参数或时间范围</div>
+        <div
+          v-else
+          v-for="cluster in clusteringResult.clusters"
+          :key="cluster.clusterId"
+          class="cluster-card"
+        >
+          <div class="cluster-header" @click="toggleCluster(cluster.clusterId)">
+            <div class="cluster-title">
+              <span class="cluster-id">簇 #{{ cluster.clusterId }}</span>
+              <span class="cluster-size">{{ cluster.size }} 条</span>
+              <span class="card-level" :class="trendClass(cluster.dominantTrend)">{{ cluster.dominantTrend || '未知' }}</span>
+            </div>
+            <div class="cluster-meta">
+              <span>主题: {{ cluster.centroidSubject }}</span>
+              <span v-if="cluster.avgSentiment != null">情绪: {{ cluster.avgSentiment.toFixed(2) }}</span>
+              <span v-if="cluster.avgIntensity != null">强度: {{ cluster.avgIntensity.toFixed(2) }}</span>
+              <span>{{ cluster.timeRange.start?.slice(0, 10) }} ~ {{ cluster.timeRange.end?.slice(0, 10) }}</span>
+            </div>
+          </div>
+          <div class="cluster-detail" v-if="expandedCluster === cluster.clusterId">
+            <div v-if="clusterDetailsLoading" class="loading">加载中...</div>
+            <div v-else-if="clusterDetails.length === 0" class="empty">暂无数据</div>
+            <div
+              v-else
+              v-for="item in clusterDetails"
+              :key="item.id"
+              class="data-card"
+              @click="showNarrativeDetail(item)"
+            >
+              <div class="card-header">
+                <span class="card-id">{{ item.narrative_id }}</span>
+                <span class="card-level" :class="trendClass(item.narrative_trend)">{{ item.narrative_trend }}</span>
+                <span class="card-time">{{ formatTime(item.publish_time) }}</span>
+              </div>
+              <div class="card-body">
+                <p class="card-subject">{{ item.main_subject }}</p>
+                <p class="card-story">{{ item.core_story?.slice(0, 150) }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 语义搜索 -->
+    <div v-if="activeTab === 'search'" class="tab-content">
+      <div class="filter-bar">
+        <input
+          v-model="vectorQuery"
+          @keyup.enter="handleVectorSearch"
+          placeholder="输入查询文本..."
+          class="search-input"
+        />
+        <div class="time-shortcuts">
+          <button class="btn btn-small" :class="{ 'btn-primary': searchShortcut === 1 }" @click="setSearchTimeRange(1)">近1天</button>
+          <button class="btn btn-small" :class="{ 'btn-primary': searchShortcut === 3 }" @click="setSearchTimeRange(3)">近3天</button>
+          <button class="btn btn-small" :class="{ 'btn-primary': searchShortcut === 7 }" @click="setSearchTimeRange(7)">近1周</button>
+          <button class="btn btn-small" :class="{ 'btn-primary': searchShortcut === 30 }" @click="setSearchTimeRange(30)">近1月</button>
+        </div>
+        <input type="datetime-local" v-model="searchTimeStart" class="search-input" style="flex:0;min-width:180px" @change="searchShortcut = 0" />
+        <span>~</span>
+        <input type="datetime-local" v-model="searchTimeEnd" class="search-input" style="flex:0;min-width:180px" @change="searchShortcut = 0" />
+        <button class="btn btn-primary btn-small" @click="handleVectorSearch" :disabled="vectorLoading">
+          {{ vectorLoading ? '搜索中...' : '搜索' }}
+        </button>
+      </div>
+
+      <div class="data-list">
+        <div v-if="vectorLoading" class="loading">正在搜索...</div>
+        <div v-else-if="vectorResults.length === 0 && vectorSearched" class="empty">未找到相关结果</div>
+        <div v-else-if="vectorResults.length === 0" class="empty">输入查询文本进行语义搜索</div>
+        <div
+          v-else
+          v-for="item in vectorResults"
+          :key="item.id"
+          class="data-card"
+          @click="showVectorResultDetail(item)"
+        >
+          <div class="card-header">
+            <span class="card-id">{{ item.narrative_id }}</span>
+            <span class="card-level" :class="trendClass(item.narrative_trend)">{{ item.narrative_trend }}</span>
+            <span class="card-dist">距离: {{ item.distance.toFixed(4) }}</span>
+            <span class="card-time">{{ formatTime(item.publish_time) }}</span>
+          </div>
+          <div class="card-body">
+            <p class="card-subject">{{ item.main_subject }}</p>
+            <p class="card-story">{{ item.core_story?.slice(0, 150) }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 详情弹窗 -->
     <div class="modal-overlay" v-if="detailItem" @click.self="detailItem = null">
       <div class="modal">
@@ -299,6 +447,11 @@ import type {
   RawMessageRow,
   NarrativeRow,
   PaginatedResult,
+  EmbeddingStatus,
+  EmbeddingProgress,
+  VectorSearchResult,
+  ClusterOptions,
+  ClusteringResult,
 } from '../../../shared/types';
 
 const router = useRouter();
@@ -310,7 +463,48 @@ const syncProgress = ref<SyncProgress | null>(null);
 const remoteStats = ref<RemoteStats | null>(null);
 
 // Tab
-const activeTab = ref<'raw' | 'narrative'>('raw');
+const activeTab = ref<'raw' | 'narrative' | 'cluster' | 'search'>('raw');
+
+// 向量嵌入状态
+const embeddingStatus = ref<EmbeddingStatus | null>(null);
+let offEmbeddingProgress: (() => void) | null = null;
+
+// 聚类
+const clusterOptions = reactive<ClusterOptions>({ timeStart: '', timeEnd: '', minClusterSize: 3, minSamples: 2, reducedDimensions: 20 } as ClusterOptions);
+
+async function loadClusterDefaults() {
+  if (!window.electronAPI) return;
+  try {
+    const keys = [
+      ['clusterMinClusterSize', 'minClusterSize'],
+      ['clusterMinSamples', 'minSamples'],
+      ['clusterReducedDimensions', 'reducedDimensions'],
+      ['clusterUmapNNeighbors', 'umapNNeighbors'],
+      ['clusterUmapMinDist', 'umapMinDist'],
+    ] as const;
+    for (const [storeKey, field] of keys) {
+      const val = await window.electronAPI.store.get(`app.settings.${storeKey}`);
+      if (val != null) (clusterOptions as any)[field] = val;
+    }
+  } catch {}
+}
+const clusteringResult = ref<ClusteringResult | null>(null);
+const clusterLoading = ref(false);
+const expandedCluster = ref<number | null>(null);
+const clusterDetails = ref<NarrativeRow[]>([]);
+const clusterDetailsLoading = ref(false);
+const activeShortcut = ref(0);
+const pcaReducedDims = ref<number | null>(null);
+const showAdvanced = ref(false);
+
+// 语义搜索
+const vectorQuery = ref('');
+const vectorResults = ref<VectorSearchResult[]>([]);
+const vectorLoading = ref(false);
+const vectorSearched = ref(false);
+const searchTimeStart = ref('');
+const searchTimeEnd = ref('');
+const searchShortcut = ref(0);
 
 // 原始消息
 const rawLoading = ref(false);
@@ -338,6 +532,7 @@ const progressPercent = computed(() => {
 onMounted(async () => {
   loadTheme();
   await refreshState();
+  await loadClusterDefaults();
   fetchRaw();
   fetchNarratives();
 
@@ -346,17 +541,23 @@ onMounted(async () => {
       syncProgress.value = p;
       if (p.phase === 'done') {
         syncProgress.value = null;
-        refreshAll();
+        refreshAll().catch(() => {});
       } else if (p.phase === 'error') {
         setTimeout(() => (syncProgress.value = null), 3000);
-        refreshState();
+        refreshState().catch(() => {});
       }
+    });
+
+    try { embeddingStatus.value = await window.electronAPI.data.getEmbeddingStatus(); } catch {}
+    offEmbeddingProgress = window.electronAPI.data.onEmbeddingProgress(() => {
+      if (window.electronAPI) window.electronAPI.data.getEmbeddingStatus().then(s => { embeddingStatus.value = s; }).catch(() => {});
     });
   }
 });
 
 onUnmounted(() => {
   offSyncProgress?.();
+  offEmbeddingProgress?.();
 });
 
 async function refreshState() {
@@ -420,6 +621,14 @@ function showNarrativeDetail(item: NarrativeRow) {
   detailItem.value = item;
 }
 
+async function showVectorResultDetail(item: VectorSearchResult) {
+  if (!window.electronAPI) return;
+  try {
+    const full = await window.electronAPI.data.getNarrative(item.narrative_id);
+    if (full) showNarrativeDetail(full);
+  } catch {}
+}
+
 function formatTime(t: string | null | undefined): string {
   if (!t) return '-';
   try {
@@ -436,6 +645,88 @@ function trendClass(trend: string | null): string {
   if (trend === '利好') return 'trend-positive';
   if (trend === '利空') return 'trend-negative';
   return 'trend-neutral';
+}
+
+function setTimeRange(days: number) {
+  activeShortcut.value = days;
+  const { start, end } = computeTimeRange(days);
+  clusterOptions.timeEnd = end;
+  clusterOptions.timeStart = start;
+}
+
+function setSearchTimeRange(days: number) {
+  searchShortcut.value = days;
+  const { start, end } = computeTimeRange(days);
+  searchTimeEnd.value = end;
+  searchTimeStart.value = start;
+}
+
+function computeTimeRange(days: number) {
+  const now = new Date();
+  const start = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const end = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const startStr = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}T${pad(start.getHours())}:${pad(start.getMinutes())}`;
+  return { start: startStr, end };
+}
+
+async function handleRunClustering() {
+  if (!window.electronAPI) return;
+  if (!clusterOptions.timeStart || !clusterOptions.timeEnd) {
+    alert('请选择时间范围');
+    return;
+  }
+  clusterLoading.value = true;
+  clusteringResult.value = null;
+  expandedCluster.value = null;
+  pcaReducedDims.value = null;
+  try {
+    clusteringResult.value = await window.electronAPI.data.runClustering({ ...clusterOptions });
+    pcaReducedDims.value = clusteringResult.value.pcaReducedDims ?? null;
+  } catch (err) {
+    alert('聚类失败: ' + err);
+  } finally {
+    clusterLoading.value = false;
+  }
+}
+
+async function toggleCluster(clusterId: number) {
+  if (expandedCluster.value === clusterId) {
+    expandedCluster.value = null;
+    return;
+  }
+  expandedCluster.value = clusterId;
+  const cluster = clusteringResult.value?.clusters.find(c => c.clusterId === clusterId);
+  if (!cluster || !window.electronAPI) return;
+  if (!cluster.narrativeIds || cluster.narrativeIds.length === 0) return;
+  clusterDetailsLoading.value = true;
+  try {
+    const ids = cluster.narrativeIds.map(Number);
+    clusterDetails.value = await window.electronAPI.data.getClusterDetails(clusterId, ids);
+  } catch (err) {
+    console.error('getClusterDetails error:', err);
+  } finally {
+    clusterDetailsLoading.value = false;
+  }
+}
+
+async function handleVectorSearch() {
+  if (!window.electronAPI || !vectorQuery.value.trim()) return;
+  vectorLoading.value = true;
+  vectorSearched.value = false;
+  try {
+    vectorResults.value = await window.electronAPI.data.vectorSearch({
+      queryText: vectorQuery.value.trim(),
+      timeStart: searchTimeStart.value || undefined,
+      timeEnd: searchTimeEnd.value || undefined,
+      limit: 20,
+    });
+    vectorSearched.value = true;
+  } catch (err) {
+    alert('语义搜索失败: ' + err);
+  } finally {
+    vectorLoading.value = false;
+  }
 }
 
 function goToSettings() {
@@ -814,4 +1105,110 @@ function goToSettings() {
 .direction-正面 { color: #27ae60; font-weight: 600; }
 .direction-负面 { color: #e74c3c; font-weight: 600; }
 .direction-中性 { color: #f39c12; font-weight: 600; }
+
+/* 聚类分析 */
+.filter-label {
+  font-size: 13px;
+  color: var(--text-color-secondary);
+  white-space: nowrap;
+}
+
+.time-shortcuts {
+  display: flex;
+  gap: 4px;
+}
+
+.cluster-info {
+  padding: 8px 24px;
+  font-size: 13px;
+  color: var(--text-color-secondary);
+}
+
+.advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 24px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-color-secondary);
+  user-select: none;
+}
+
+.advanced-toggle:hover { color: var(--primary-color); }
+
+.advanced-arrow {
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.advanced-arrow.expanded { transform: rotate(90deg); }
+
+.advanced-params {
+  padding-top: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.param-hint {
+  font-size: 11px;
+  color: var(--text-color-secondary);
+  white-space: nowrap;
+}
+
+.cluster-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cluster-header {
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.cluster-header:hover { background: var(--bg-color-secondary); }
+
+.cluster-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.cluster-id {
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.cluster-size {
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--bg-color-secondary);
+  color: var(--text-color-secondary);
+}
+
+.cluster-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-color-secondary);
+}
+
+.cluster-detail {
+  border-top: 1px solid var(--border-color);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card-dist {
+  font-size: 12px;
+  font-family: monospace;
+  color: #8e44ad;
+}
 </style>

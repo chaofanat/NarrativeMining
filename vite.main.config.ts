@@ -10,7 +10,7 @@ export default defineConfig({
   build: {
     outDir: '.vite/build/main',
     rollupOptions: {
-      external: ['electron', 'better-sqlite3'],
+      external: ['electron', 'better-sqlite3', 'sqlite-vec', 'hdbscan-ts', 'ml-pca', 'umap-js'],
     },
   },
 });

@@ -159,6 +159,82 @@ export interface SyncProgress {
 }
 
 // ============================================================
+// 向量嵌入 / 搜索 / 聚类类型
+// ============================================================
+
+export interface EmbeddingProviderConfig {
+  provider: 'openai' | 'ollama' | 'custom';
+  apiEndpoint: string;
+  apiKey: string;
+  model: string;
+  dimensions: number;
+  batchSize: number;
+}
+
+export interface EmbeddingStatus {
+  totalNarratives: number;
+  embeddedCount: number;
+  pendingCount: number;
+  isProcessing: boolean;
+}
+
+export interface EmbeddingProgress {
+  processed: number;
+  total: number;
+  currentBatch: number;
+  failedCount: number;
+  message: string;
+}
+
+export interface VectorSearchOptions {
+  queryText: string;
+  timeStart?: string;
+  timeEnd?: string;
+  limit?: number;
+  threshold?: number;
+}
+
+export interface VectorSearchResult {
+  id: number;
+  narrative_id: string;
+  distance: number;
+  main_subject: string | null;
+  core_story: string | null;
+  publish_time: string | null;
+  narrative_trend: string | null;
+  sentiment_score: number | null;
+}
+
+export interface ClusterOptions {
+  timeStart: string;
+  timeEnd: string;
+  minClusterSize: number;
+  minSamples?: number;
+  reducedDimensions?: number;
+  umapNNeighbors?: number;
+  umapMinDist?: number;
+}
+
+export interface ClusterResult {
+  clusterId: number;
+  size: number;
+  centroidSubject: string;
+  narrativeIds: number[];
+  avgSentiment: number | null;
+  avgIntensity: number | null;
+  dominantTrend: string | null;
+  timeRange: { start: string; end: string };
+}
+
+export interface ClusteringResult {
+  clusters: ClusterResult[];
+  noiseCount: number;
+  totalItems: number;
+  parameters: ClusterOptions;
+  pcaReducedDims?: number;
+}
+
+// ============================================================
 // 查询/过滤类型
 // ============================================================
 
@@ -246,6 +322,20 @@ export interface IPCChannels {
 
   // 数据库操作
   'db:clearAll': () => void;
+
+  // 向量嵌入
+  'embedding:status': () => EmbeddingStatus;
+  'embedding:start': () => void;
+  'embedding:cancel': () => void;
+  'embedding:getConfig': () => EmbeddingProviderConfig | null;
+  'embedding:saveConfig': (config: EmbeddingProviderConfig) => void;
+
+  // 向量搜索
+  'vector:search': (options: VectorSearchOptions) => VectorSearchResult[];
+
+  // 聚类分析
+  'clustering:run': (options: ClusterOptions) => ClusteringResult;
+  'clustering:details': (clusterId: number, narrativeIds: number[]) => NarrativeRow[];
 }
 
 export interface CreateWindowOptions {
@@ -333,6 +423,18 @@ export interface ElectronAPI {
     checkRemoteHealth: () => Promise<{ status: string }>;
     // 数据库操作
     clearAllData: () => Promise<void>;
+    // 向量嵌入
+    getEmbeddingStatus: () => Promise<EmbeddingStatus>;
+    startEmbedding: () => Promise<void>;
+    cancelEmbedding: () => Promise<void>;
+    onEmbeddingProgress: (callback: (progress: EmbeddingProgress) => void) => () => void;
+    getEmbeddingConfig: () => Promise<EmbeddingProviderConfig | null>;
+    saveEmbeddingConfig: (config: EmbeddingProviderConfig) => Promise<void>;
+    // 向量搜索
+    vectorSearch: (options: VectorSearchOptions) => Promise<VectorSearchResult[]>;
+    // 聚类分析
+    runClustering: (options: ClusterOptions) => Promise<ClusteringResult>;
+    getClusterDetails: (clusterId: number, narrativeIds: number[]) => Promise<NarrativeRow[]>;
   };
 }
 

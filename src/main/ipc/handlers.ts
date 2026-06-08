@@ -6,13 +6,19 @@ import { SyncService } from '../services/SyncService';
 import { RawMessageService } from '../services/RawMessageService';
 import { NarrativeService } from '../services/NarrativeService';
 import { ApiClient } from '../services/ApiClient';
-import { clearAllData, getDatabase } from '../database';
+import { EmbeddingService } from '../services/EmbeddingService';
+import { VectorService } from '../services/VectorService';
+import { ClusteringService } from '../services/ClusteringService';
+import { clearAllData, getDatabase, ensureVecDimensions } from '../database';
 import type { AppStore } from '../store';
 import type { Logger } from 'electron-log';
 import type {
   CreateWindowOptions,
   RawQueryOptions,
   NarrativeQueryOptions,
+  EmbeddingProviderConfig,
+  VectorSearchOptions,
+  ClusterOptions,
 } from '../../shared/types';
 
 export function setupIPC(
@@ -23,6 +29,9 @@ export function setupIPC(
   rawService: RawMessageService,
   narrativeService: NarrativeService,
   apiClient: ApiClient,
+  embeddingService: EmbeddingService,
+  vectorService: VectorService,
+  clusteringService: ClusteringService,
 ): void {
   // 应用信息
   ipcMain.handle(channels.app.getVersion, () => {
@@ -165,6 +174,49 @@ export function setupIPC(
   ipcMain.handle(channels.db.clearAll, () => {
     clearAllData(getDatabase());
     logger.info('数据库已清空');
+  });
+
+  // 向量嵌入
+  ipcMain.handle(channels.embedding.status, () => {
+    return embeddingService.getStatus();
+  });
+
+  ipcMain.handle(channels.embedding.start, async () => {
+    await embeddingService.startEmbedding();
+  });
+
+  ipcMain.handle(channels.embedding.cancel, () => {
+    embeddingService.cancelEmbedding();
+  });
+
+  ipcMain.handle(channels.embedding.getConfig, () => {
+    return embeddingService.getConfigValue();
+  });
+
+  ipcMain.handle(channels.embedding.saveConfig, (_, config: EmbeddingProviderConfig) => {
+    store.set('app.settings.embeddingProvider', config.provider);
+    store.set('app.settings.embeddingApiEndpoint', config.apiEndpoint);
+    store.set('app.settings.embeddingApiKey', config.apiKey);
+    store.set('app.settings.embeddingModel', config.model);
+    store.set('app.settings.embeddingDimensions', config.dimensions);
+    store.set('app.settings.embeddingBatchSize', config.batchSize);
+    if (ensureVecDimensions(getDatabase(), config.dimensions)) {
+      logger.info(`向量维度变更为 ${config.dimensions}，vec 表已重建`);
+    }
+  });
+
+  // 向量搜索
+  ipcMain.handle(channels.vector.search, async (_, options: VectorSearchOptions) => {
+    return vectorService.search(options);
+  });
+
+  // 聚类分析
+  ipcMain.handle(channels.clustering.run, async (_, options: ClusterOptions) => {
+    return clusteringService.runClustering(options);
+  });
+
+  ipcMain.handle(channels.clustering.details, (_, _clusterId: number, narrativeIds: number[]) => {
+    return clusteringService.getClusterDetails(narrativeIds);
   });
 
   logger.info('IPC 处理器已注册');

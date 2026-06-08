@@ -53,6 +53,11 @@ export class MainWindow {
       return { action: 'deny' };
     });
 
+    // 防止渲染进程崩溃后自动重载页面（避免丢失前端状态）
+    this.window.webContents.on('render-process-gone', (_event, details) => {
+      this.logger.error(`渲染进程崩溃: ${details.reason}, exitCode=${details.exitCode}`);
+    });
+
     // 加载应用
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
       this.window.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);

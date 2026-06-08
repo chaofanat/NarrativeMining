@@ -77,6 +77,21 @@ export const IPC_CHANNELS = {
 
   // 数据库操作
   DB_CLEAR_ALL: 'db:clearAll',
+
+  // 向量嵌入
+  EMBEDDING_STATUS: 'embedding:status',
+  EMBEDDING_START: 'embedding:start',
+  EMBEDDING_CANCEL: 'embedding:cancel',
+  EMBEDDING_PROGRESS: 'embedding:progress',
+  EMBEDDING_GET_CONFIG: 'embedding:getConfig',
+  EMBEDDING_SAVE_CONFIG: 'embedding:saveConfig',
+
+  // 向量搜索
+  VECTOR_SEARCH: 'vector:search',
+
+  // 聚类分析
+  CLUSTERING_RUN: 'clustering:run',
+  CLUSTERING_DETAILS: 'clustering:details',
 } as const;
 
 // 存储键名

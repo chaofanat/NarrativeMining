@@ -13,6 +13,10 @@ import { ApiClient } from './services/ApiClient';
 import { SyncService } from './services/SyncService';
 import { RawMessageService } from './services/RawMessageService';
 import { NarrativeService } from './services/NarrativeService';
+import { EmbeddingService } from './services/EmbeddingService';
+import { VectorService } from './services/VectorService';
+import { ClusteringService } from './services/ClusteringService';
+import type { EmbeddingProviderConfig } from '../shared/types';
 
 // 处理 Squirrel 安装事件
 if (handleSquirrelEvent()) {
@@ -32,17 +36,37 @@ if (!gotTheLock) {
   const store = setupStore();
 
   // 初始化数据库
-  const db = setupDatabase(logger);
+  const vecDims = (store.get('app.settings.embeddingDimensions') as number) || 1024;
+  const db = setupDatabase(logger, vecDims);
   cleanupFtsIfBloated(db);
 
   // 初始化服务
   const apiClient = new ApiClient();
+
+  const getEmbeddingConfig = (): EmbeddingProviderConfig | null => {
+    const provider = store.get('app.settings.embeddingProvider') as string;
+    if (!provider) return null;
+    return {
+      provider: provider as 'openai' | 'ollama' | 'custom',
+      apiEndpoint: (store.get('app.settings.embeddingApiEndpoint') as string) || '',
+      apiKey: (store.get('app.settings.embeddingApiKey') as string) || '',
+      model: (store.get('app.settings.embeddingModel') as string) || 'text-embedding-3-small',
+      dimensions: (store.get('app.settings.embeddingDimensions') as number) || 1024,
+      batchSize: (store.get('app.settings.embeddingBatchSize') as number) || 20,
+    };
+  };
+
+  const embeddingService = new EmbeddingService(db, logger, getEmbeddingConfig);
+  const vectorService = new VectorService(db, logger, getEmbeddingConfig, (texts) => embeddingService.embedBatch(texts));
+  const clusteringService = new ClusteringService(db, logger);
+
   const syncService = new SyncService(
     db,
     apiClient,
     logger,
     () => (store.get('app.settings.autoSync') as boolean) ?? true,
     () => (store.get('app.settings.syncIntervalMinutes') as number) ?? 5,
+    () => { embeddingService.startEmbedding().catch((err) => logger.error(`自动嵌入失败: ${err}`)); },
   );
   const rawService = new RawMessageService(db);
   const narrativeService = new NarrativeService(db);
@@ -72,7 +96,7 @@ if (!gotTheLock) {
     });
 
     // 设置 IPC 通信
-    setupIPC(windowManager, store, logger, syncService, rawService, narrativeService, apiClient);
+    setupIPC(windowManager, store, logger, syncService, rawService, narrativeService, apiClient, embeddingService, vectorService, clusteringService);
 
     // 设置应用菜单
     setupMenu(windowManager, logger);
@@ -85,6 +109,9 @@ if (!gotTheLock) {
 
     // 启动自动同步
     syncService.startAutoSync();
+
+    // 启动时补做未完成的嵌入
+    embeddingService.startEmbedding().catch((err) => logger.error(`初始嵌入失败: ${err}`));
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {

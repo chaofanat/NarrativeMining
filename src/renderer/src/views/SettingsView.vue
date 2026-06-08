@@ -51,6 +51,106 @@
       </div>
 
       <div class="settings-section">
+        <h2>向量嵌入</h2>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">嵌入服务</span>
+            <span class="setting-desc">选择嵌入向量生成服务提供商</span>
+          </div>
+          <select v-model="embeddingConfig.provider" @change="saveEmbeddingConfig">
+            <option value="ollama">Ollama (本地)</option>
+            <option value="openai">OpenAI</option>
+            <option value="custom">自定义 API</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">API 端点</span>
+            <span class="setting-desc">{{ embeddingConfig.provider === 'ollama' ? 'Ollama 嵌入接口地址' : embeddingConfig.provider === 'openai' ? '留空使用 OpenAI 默认地址，或填兼容 API 地址' : '自定义 Embedding API 地址' }}</span>
+          </div>
+          <input type="text" v-model="embeddingConfig.apiEndpoint" @change="saveEmbeddingConfig" class="text-input" :placeholder="embeddingConfig.provider === 'ollama' ? 'http://localhost:11434/api/embed' : 'https://api.openai.com/v1/embeddings'" />
+        </div>
+        <div class="setting-item" v-if="embeddingConfig.provider !== 'ollama'">
+          <div class="setting-info">
+            <span class="setting-label">API Key</span>
+            <span class="setting-desc">嵌入服务密钥</span>
+          </div>
+          <input type="password" v-model="embeddingConfig.apiKey" @change="saveEmbeddingConfig" class="text-input" placeholder="sk-..." />
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">模型</span>
+            <span class="setting-desc">嵌入模型名称</span>
+          </div>
+          <input type="text" v-model="embeddingConfig.model" @change="saveEmbeddingConfig" class="text-input" />
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">向量维度</span>
+            <span class="setting-desc">模型输出维度，变更后需重启应用并重新生成</span>
+          </div>
+          <input type="number" v-model.number="embeddingConfig.dimensions" @change="saveEmbeddingConfig" class="text-input" style="width:80px;min-width:80px" min="1" max="8192" />
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">手动触发嵌入</span>
+            <span class="setting-desc">为所有未生成向量的叙事生成嵌入</span>
+          </div>
+          <button class="btn-primary" @click="handleStartEmbedding" :disabled="embeddingProcessing">
+            {{ embeddingProcessing ? '生成中...' : '开始生成' }}
+          </button>
+        </div>
+        <div class="setting-item" v-if="embeddingStatus">
+          <div class="setting-info">
+            <span class="setting-label">嵌入进度</span>
+            <span class="setting-desc">{{ embeddingStatus.embeddedCount }} / {{ embeddingStatus.totalNarratives }} 已嵌入</span>
+          </div>
+          <div class="progress-bar-mini">
+            <div class="progress-fill" :style="{ width: embeddingStatus.totalNarratives > 0 ? (embeddingStatus.embeddedCount / embeddingStatus.totalNarratives * 100) + '%' : '0%' }"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h2>聚类参数</h2>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">最小簇大小</span>
+            <span class="setting-desc">HDBSCAN 聚类的最小簇包含点数</span>
+          </div>
+          <input type="number" v-model.number="clusterDefaults.minClusterSize" @change="saveClusterDefaults" class="text-input" style="width:80px;min-width:80px" min="2" max="100" />
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">核心邻域 (minSamples)</span>
+            <span class="setting-desc">核心点的最小邻域数，越大噪声越多</span>
+          </div>
+          <input type="number" v-model.number="clusterDefaults.minSamples" @change="saveClusterDefaults" class="text-input" style="width:80px;min-width:80px" min="1" max="100" />
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">降维维数</span>
+            <span class="setting-desc">UMAP 降维后的目标维数，0 表示不降维</span>
+          </div>
+          <input type="number" v-model.number="clusterDefaults.reducedDimensions" @change="saveClusterDefaults" class="text-input" style="width:80px;min-width:80px" min="0" max="500" />
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">nNeighbors</span>
+            <span class="setting-desc">UMAP 邻域大小，越大越保留全局结构</span>
+          </div>
+          <input type="number" v-model.number="clusterDefaults.umapNNeighbors" @change="saveClusterDefaults" class="text-input" style="width:80px;min-width:80px" min="2" max="200" />
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">minDist</span>
+            <span class="setting-desc">UMAP 嵌入紧密度，越低点越密集</span>
+          </div>
+          <input type="number" v-model.number="clusterDefaults.umapMinDist" @change="saveClusterDefaults" class="text-input" style="width:80px;min-width:80px" min="0" max="1" step="0.05" />
+        </div>
+      </div>
+
+      <div class="settings-section">
         <h2>行为</h2>
         <div class="setting-item">
           <div class="setting-info">
@@ -116,9 +216,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useTheme } from '../composables/useTheme';
+import type { EmbeddingProviderConfig, EmbeddingStatus, EmbeddingProgress } from '../../../shared/types';
 
 const router = useRouter();
 const appVersion = ref('');
@@ -152,12 +253,28 @@ onMounted(async () => {
       settings.value.autoUpdate = appSettings.autoUpdate ?? true;
       settings.value.autoSync = appSettings.autoSync ?? true;
       settings.value.syncInterval = appSettings.syncIntervalMinutes ?? 5;
+      clusterDefaults.minClusterSize = appSettings.clusterMinClusterSize ?? 3;
+      clusterDefaults.minSamples = appSettings.clusterMinSamples ?? 2;
+      clusterDefaults.reducedDimensions = appSettings.clusterReducedDimensions ?? 20;
+      clusterDefaults.umapNNeighbors = appSettings.clusterUmapNNeighbors ?? 15;
+      clusterDefaults.umapMinDist = appSettings.clusterUmapMinDist ?? 0.1;
     }
 
     const startupBehavior = await window.electronAPI.store.get<string>('user.preferences.startupBehavior');
     if (startupBehavior) {
       settings.value.startupBehavior = startupBehavior;
     }
+
+    try {
+      const savedEmbeddingConfig = await window.electronAPI.data.getEmbeddingConfig();
+      if (savedEmbeddingConfig) Object.assign(embeddingConfig, savedEmbeddingConfig);
+    } catch {}
+    try { await refreshEmbeddingStatus(); } catch {}
+    try {
+      offEmbeddingProgress = window.electronAPI.data.onEmbeddingProgress((_progress: EmbeddingProgress) => {
+        refreshEmbeddingStatus();
+      });
+    } catch {}
   }
 });
 
@@ -182,6 +299,61 @@ const saveSyncSettings = async () => {
 
 const clearing = ref(false);
 
+const embeddingConfig = reactive<EmbeddingProviderConfig>({
+  provider: 'ollama' as 'openai' | 'ollama' | 'custom',
+  apiEndpoint: '',
+  apiKey: '',
+  model: 'text-embedding-3-small',
+  dimensions: 1536,
+  batchSize: 20,
+});
+const embeddingStatus = ref<EmbeddingStatus | null>(null);
+const embeddingProcessing = ref(false);
+let offEmbeddingProgress: (() => void) | null = null;
+
+const clusterDefaults = reactive({
+  minClusterSize: 3,
+  minSamples: 2,
+  reducedDimensions: 20,
+  umapNNeighbors: 15,
+  umapMinDist: 0.1,
+});
+
+const saveClusterDefaults = async () => {
+  if (!window.electronAPI) return;
+  await window.electronAPI.store.set('app.settings.clusterMinClusterSize', clusterDefaults.minClusterSize);
+  await window.electronAPI.store.set('app.settings.clusterMinSamples', clusterDefaults.minSamples);
+  await window.electronAPI.store.set('app.settings.clusterReducedDimensions', clusterDefaults.reducedDimensions);
+  await window.electronAPI.store.set('app.settings.clusterUmapNNeighbors', clusterDefaults.umapNNeighbors);
+  await window.electronAPI.store.set('app.settings.clusterUmapMinDist', clusterDefaults.umapMinDist);
+};
+
+const saveEmbeddingConfig = async () => {
+  if (window.electronAPI) {
+    await window.electronAPI.data.saveEmbeddingConfig({ ...embeddingConfig });
+  }
+};
+
+const handleStartEmbedding = async () => {
+  if (!window.electronAPI) return;
+  if (!embeddingConfig.apiKey) {
+    alert('请先配置 API Key');
+    return;
+  }
+  embeddingProcessing.value = true;
+  try {
+    await window.electronAPI.data.startEmbedding();
+  } catch (err) {
+    alert('嵌入生成失败: ' + err);
+  }
+};
+
+const refreshEmbeddingStatus = async () => {
+  if (window.electronAPI) {
+    embeddingStatus.value = await window.electronAPI.data.getEmbeddingStatus();
+  }
+};
+
 const handleClearData = async () => {
   if (!window.electronAPI) return;
   const confirmed = confirm('确定要清除所有本地数据吗？此操作不可撤销。');
@@ -205,6 +377,10 @@ const handleClearData = async () => {
 const goBack = () => {
   router.push('/');
 };
+
+onUnmounted(() => {
+  if (offEmbeddingProgress) offEmbeddingProgress();
+});
 </script>
 
 <style scoped>
@@ -364,5 +540,49 @@ input:checked + .slider:before {
 .danger-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.text-input {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+  color: var(--text-color);
+  min-width: 200px;
+  font-size: 14px;
+}
+
+.btn-primary {
+  padding: 8px 16px;
+  border: 1px solid #409eff;
+  background: #409eff;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #66b1ff;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.progress-bar-mini {
+  width: 120px;
+  height: 8px;
+  background: var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #409eff;
+  transition: width 0.3s;
 }
 </style>

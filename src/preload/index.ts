@@ -13,6 +13,13 @@ import type {
   RawMessageRow,
   NarrativeRow,
   RemoteStats,
+  EmbeddingProviderConfig,
+  EmbeddingStatus,
+  EmbeddingProgress,
+  VectorSearchOptions,
+  VectorSearchResult,
+  ClusterOptions,
+  ClusteringResult,
 } from '../shared/types';
 
 const electronAPI: ElectronAPI = {
@@ -90,6 +97,22 @@ const electronAPI: ElectronAPI = {
     checkRemoteHealth: () => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_HEALTH) as Promise<{ status: string }>,
     // 数据库操作
     clearAllData: () => ipcRenderer.invoke(IPC_CHANNELS.DB_CLEAR_ALL) as Promise<void>,
+    // 向量嵌入
+    getEmbeddingStatus: () => ipcRenderer.invoke(IPC_CHANNELS.EMBEDDING_STATUS) as Promise<EmbeddingStatus>,
+    startEmbedding: () => ipcRenderer.invoke(IPC_CHANNELS.EMBEDDING_START) as Promise<void>,
+    cancelEmbedding: () => ipcRenderer.invoke(IPC_CHANNELS.EMBEDDING_CANCEL) as Promise<void>,
+    onEmbeddingProgress: (callback: (progress: EmbeddingProgress) => void) => {
+      const handler = (_: unknown, progress: EmbeddingProgress) => callback(progress);
+      ipcRenderer.on(IPC_CHANNELS.EMBEDDING_PROGRESS, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.EMBEDDING_PROGRESS, handler);
+    },
+    getEmbeddingConfig: () => ipcRenderer.invoke(IPC_CHANNELS.EMBEDDING_GET_CONFIG) as Promise<EmbeddingProviderConfig | null>,
+    saveEmbeddingConfig: (config: EmbeddingProviderConfig) => ipcRenderer.invoke(IPC_CHANNELS.EMBEDDING_SAVE_CONFIG, config) as Promise<void>,
+    // 向量搜索
+    vectorSearch: (options: VectorSearchOptions) => ipcRenderer.invoke(IPC_CHANNELS.VECTOR_SEARCH, options) as Promise<VectorSearchResult[]>,
+    // 聚类分析
+    runClustering: (options: ClusterOptions) => ipcRenderer.invoke(IPC_CHANNELS.CLUSTERING_RUN, options) as Promise<ClusteringResult>,
+    getClusterDetails: (clusterId: number, narrativeIds: number[]) => ipcRenderer.invoke(IPC_CHANNELS.CLUSTERING_DETAILS, clusterId, narrativeIds) as Promise<NarrativeRow[]>,
   },
 };
 
