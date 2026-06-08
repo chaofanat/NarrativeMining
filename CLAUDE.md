@@ -1,13 +1,14 @@
-# Electron + Vue 3 + TypeScript 最佳实践模板
+# NarrativeMining — 金融叙事挖掘桌面应用
 
 ## 项目概述
 
-这是一个完整的 Electron 桌面应用开发模板，采用以下技术栈：
+这是一个金融新闻叙事挖掘桌面应用，采用以下技术栈：
 
 - **Electron 29** - 跨平台桌面应用框架
 - **Vue 3** - 前端框架（Composition API）
 - **TypeScript** - 类型安全
 - **Vite 5** - 构建工具
+- **SQLite**（better-sqlite3 + sqlite-vec） - 本地数据库 + 向量存储
 - **Electron Forge** - 打包和分发
 
 ## 项目结构
@@ -21,7 +22,10 @@
 │   │   │   ├── ApiClient.ts     # 远程 API 封装
 │   │   │   ├── SyncService.ts   # 数据同步调度
 │   │   │   ├── RawMessageService.ts
-│   │   │   └── NarrativeService.ts
+│   │   │   ├── NarrativeService.ts
+│   │   │   ├── EmbeddingService.ts  # 向量嵌入生成
+│   │   │   ├── VectorService.ts     # 语义相似度搜索
+│   │   │   └── ClusteringService.ts # HDBSCAN 聚类分析
 │   │   ├── ipc/                 # IPC 通信
 │   │   ├── store/               # 配置存储 (electron-store)
 │   │   ├── logger/              # 日志系统
@@ -118,7 +122,7 @@ Model  → Service → View  → Bridge
 
 ## 数据层规则
 
-- **better-sqlite3 必须外部化**：`vite.main.config.ts` 的 `rollupOptions.external` 必须包含 `'better-sqlite3'`，否则构建失败
+- **better-sqlite3 必须外部化**：`vite.main.config.ts` 的 `rollupOptions.external` 必须包含 `'better-sqlite3'`、`'sqlite-vec'`、`'hdbscan-ts'`、`'umap-js'`，否则构建失败
 - **同步表的 id 用 `INTEGER PRIMARY KEY`，不加 AUTOINCREMENT**：`raw_messages` 和 `narratives` 的 `id` 来自远程 API，AUTOINCREMENT 会导致 INSERT OR REPLACE 时 id 跑偏，增量同步判断失效
 - **FTS 索引随数据写入**：`SyncService` 在同一事务中写入数据行 + FTS 行，不单独重建索引
 - **增量同步基于 max_id**：`sync_state` 表存储 `max_raw_id` / `max_narrative_id`，每批检查 `item.id > lastMaxId`，全批旧记录时提前终止
@@ -126,6 +130,9 @@ Model  → Service → View  → Bridge
 - **FTS INSERT 必须显式指定 rowid**：FTS5 的冲突检测基于隐式 rowid，不是 UNINDEXED 的 row_id 列。INSERT 缺少 rowid 会导致 INSERT OR REPLACE 失效、每次同步追加重复行。写入格式：`INSERT INTO fts (rowid, row_id, text) VALUES (?, ?, ?)`
 - **FTS 提取函数必须覆盖表的全部列**：`extractXxxFtsText` 的字段变更后递增 `FTS_VERSION`（database/index.ts），下次启动自动重建索引
 - **FTS 搜索策略**：unicode61 分词器不拆分 CJK 连续字符（整个中文短语是一个 token），连字符是分隔符。`toFtsQuery` 对简单词用裸前缀 `term*`，含特殊字符（`-`, `.`, `:`, `*`, `(`, `)`, `"`, 空格）用引号包裹 `"term"`。`*` 只能跟裸词，不能跟引号短语。搜索前对输入做 `trim()` 检查，空字符串不能进 MATCH
+- **sqlite-vec 元数据列**：`narrative_vec` 使用 `vec0(embedding float[N], publish_time text)` 创建。`publish_time` 作为元数据列可在 KNN 查询的 WHERE 子句中直接过滤（距离计算前），无需 JS 端后过滤。KNN 查询格式：`WHERE embedding MATCH ? AND k = ? AND publish_time >= ? AND publish_time <= ?`
+- **vec0 schema 版本控制**：`ensureVecDimensions()` 通过 `sync_state` 中的 `vec_dimensions` + `vec_schema_version` 检测变更。维度或 schema 版本不匹配时 DROP + 重建 `narrative_vec`，需重新触发嵌入生成。当前版本：`VEC_SCHEMA_VERSION = 2`
+- **聚类使用 Worker Thread**：`ClusteringService.runHdbscanWorker()` 通过 `new Worker(code, { eval: true })` 执行 UMAP + HDBSCAN，避免阻塞主线程。Worker 内 `require()` 在 dev 模式下从 node_modules 解析
 
 ## TypeScript 配置
 
@@ -156,6 +163,8 @@ Model  → Service → View  → Bridge
 - **better-sqlite3 构建失败**：`npx electron-rebuild -f -w better-sqlite3`
 - **同步数据不更新**：Schema 变更后需删除 `%APPDATA%/electron-vue-template/narrative-mining.db` 重建
 - **TypeScript 报错**：清理 `.vite/build/` 后重试；三个子项目用各自的 tsconfig 独立检查
+- **向量搜索报 KNN 错误**：vec0 的 KNN 查询必须有 `k = ?` 约束，不能用 `WHERE rowid IN (...)` 干扰 KNN 扫描计划
+- **维度变更后向量丢失**：修改 embedding 维度或 vec0 schema 升级会自动 DROP 重建 `narrative_vec`，需在设置页重新触发嵌入生成
 
 ## 相关文档
 

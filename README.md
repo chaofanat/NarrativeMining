@@ -10,7 +10,7 @@
 - **Vue 3** - 前端框架（Composition API）
 - **TypeScript** - 类型安全
 - **Vite 5** - 构建工具
-- **SQLite**（better-sqlite3 + FTS5） - 本地全文检索数据库
+- **SQLite**（better-sqlite3 + FTS5 + sqlite-vec） - 本地数据库、全文检索、向量存储
 - **Electron Forge** - 打包和分发
 
 ## 特性
@@ -18,6 +18,9 @@
 - 远程 API 数据同步（自动/手动，增量同步）
 - 原始消息与叙事分析数据的本地存储与查询
 - FTS5 中文全文检索（前缀匹配、全字段覆盖）
+- 向量嵌入生成（OpenAI / Ollama / 自定义 API）
+- 语义相似度搜索（sqlite-vec KNN + 时间范围过滤）
+- HDBSCAN 聚类分析（UMAP 降维 + 密度聚类）
 - 叙事分析多维度筛选（趋势、模式、情绪、强度等）
 - 自动同步间隔可配置
 - 完整的 MSVB 架构（Model → Service → View → Bridge）
@@ -162,6 +165,32 @@ const result = await window.electronAPI.data.listNarratives({
 ### 自动同步
 
 设置页面可配置自动同步开关和间隔（1-60 分钟），启动后自动拉取新增数据。
+
+### 语义搜索
+
+基于向量嵌入的语义相似度搜索，支持时间范围过滤。
+
+```typescript
+const results = await window.electronAPI.data.vectorSearch({
+  queryText: '央行降准对市场的影响',
+  timeStart: '2024-01-01T00:00',
+  timeEnd: '2024-03-01T00:00',
+  limit: 20,
+});
+```
+
+### 聚类分析
+
+UMAP 降维 + HDBSCAN 密度聚类，发现叙事主题分组。
+
+```typescript
+const result = await window.electronAPI.data.runClustering({
+  timeStart: '2024-01-01T00:00',
+  timeEnd: '2024-03-01T00:00',
+  minClusterSize: 3,
+  reducedDimensions: 20,
+});
+```
 
 ## 文档
 
