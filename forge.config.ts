@@ -8,8 +8,8 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    name: 'Electron Vue App',
-    executableName: 'electron-vue-app',
+    name: 'NarrativeMining',
+    executableName: 'narrative-mining',
   },
   makers: [
     new MakerSquirrel({
