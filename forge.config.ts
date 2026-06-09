@@ -4,12 +4,40 @@ import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { VitePlugin } from '@electron-forge/plugin-vite';
+import { resolve, basename } from 'path';
+import fs from 'fs-extra';
+
+const root = __dirname;
+
+const nativeModules = [
+  'better-sqlite3',
+  'bindings',
+  'file-uri-to-path',
+  'sqlite-vec',
+  'sqlite-vec-windows-x64',
+];
 
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     name: 'NarrativeMining',
     executableName: 'narrative-mining',
+  },
+  hooks: {
+    async postPackage(forgeConfig, packageResult) {
+      for (const outputDir of packageResult.outputPaths) {
+        const resourcesPath = resolve(outputDir, 'resources');
+        const nodeModulesPath = resolve(resourcesPath, 'node_modules');
+        await fs.ensureDir(nodeModulesPath);
+        for (const mod of nativeModules) {
+          const src = resolve(root, 'node_modules', mod);
+          const dest = resolve(nodeModulesPath, mod);
+          if (await fs.pathExists(src)) {
+            await fs.copy(src, dest);
+          }
+        }
+      }
+    },
   },
   makers: [
     new MakerSquirrel({
@@ -36,6 +64,11 @@ const config: ForgeConfig = {
           entry: 'src/preload/index.ts',
           config: 'vite.preload.config.ts',
           target: 'preload',
+        },
+        {
+          entry: 'src/main/workers/clustering.worker.ts',
+          config: 'vite.worker.config.ts',
+          target: 'main',
         },
       ],
       renderer: [

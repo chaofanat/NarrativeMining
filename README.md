@@ -100,6 +100,7 @@ npm run format
 │   │   ├── index.ts             # 应用入口
 │   │   ├── database/            # SQLite 数据库初始化 + FTS 索引
 │   │   ├── services/            # 业务逻辑 (API + 同步 + 查询)
+│   │   ├── workers/             # Worker 线程入口 (聚类等 CPU 密集任务)
 │   │   ├── ipc/                 # IPC 通信
 │   │   ├── store/               # 配置存储
 │   │   ├── logger/              # 日志系统

@@ -1,4 +1,5 @@
 import { app, BrowserWindow } from 'electron';
+import { resolve } from 'path';
 import { WindowManager } from './window/WindowManager';
 import { setupIPC } from './ipc/handlers';
 import { setupTray } from './tray';
@@ -17,6 +18,13 @@ import { EmbeddingService } from './services/EmbeddingService';
 import { VectorService } from './services/VectorService';
 import { ClusteringService } from './services/ClusteringService';
 import type { EmbeddingProviderConfig } from '../shared/types';
+
+// 打包环境下将 extraResource 中的原生模块加入搜索路径
+if (app.isPackaged) {
+  const extraModules = resolve(process.resourcesPath, 'node_modules');
+  process.env.NODE_PATH = extraModules;
+  require('module')._initPaths();
+}
 
 // 处理 Squirrel 安装事件
 if (handleSquirrelEvent()) {

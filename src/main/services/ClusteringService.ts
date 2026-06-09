@@ -1,4 +1,5 @@
 import { Worker } from 'worker_threads';
+import { join } from 'path';
 import type BetterSqlite3 from 'better-sqlite3';
 import type { Logger } from 'electron-log';
 import type { ClusterOptions, ClusterResult, ClusteringResult, NarrativeRow } from '../../shared/types';
@@ -21,11 +22,16 @@ export class ClusteringService {
       return { clusters: [], noiseCount: 0, totalItems: 0, parameters: options };
     }
 
-    const vectors: number[][] = rows.map((r) => {
+    const validRows = rows.filter((r) => r.embedding && r.embedding.length > 0);
+    if (validRows.length === 0) {
+      return { clusters: [], noiseCount: 0, totalItems: 0, parameters: options };
+    }
+
+    const vectors: number[][] = validRows.map((r) => {
       const buf = r.embedding;
       return Array.from(new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4));
     });
-    const ids = rows.map((r) => r.id);
+    const ids = validRows.map((r) => r.id);
 
     const minClusterSize = options.minClusterSize || 3;
     const reducedDims = options.reducedDimensions || 0;
@@ -121,35 +127,13 @@ export class ClusteringService {
 
   private runHdbscanWorker(vectors: number[][], params: { minClusterSize: number; minSamples?: number }, reducedDims: number, umapNNeighbors?: number, umapMinDist?: number): Promise<{ labels: number[]; reducedDims: number }> {
     return new Promise((resolve, reject) => {
-      const workerCode = `
-        const { HDBSCAN } = require('hdbscan-ts');
-        const { UMAP } = require('umap-js');
-        const { parentPort, workerData } = require('worker_threads');
-        try {
-          const { vectors, params, reducedDims, umapNNeighbors, umapMinDist } = workerData;
-          let data = vectors;
-          let actualDims = vectors[0].length;
-          if (reducedDims && reducedDims < vectors[0].length && vectors.length > reducedDims) {
-            const umap = new UMAP({
-              nComponents: Math.min(reducedDims, vectors.length - 1),
-              nNeighbors: Math.min(umapNNeighbors || 15, vectors.length - 1),
-              minDist: umapMinDist ?? 0.1,
-            });
-            data = umap.fit(vectors);
-            actualDims = data[0].length;
-          }
-          const hdbscan = new HDBSCAN(params);
-          const labels = hdbscan.fit(data);
-          parentPort.postMessage({ labels, reducedDims: actualDims });
-        } catch (err) {
-          parentPort.postMessage({ __error: err.message });
-        }
-      `;
-      const worker = new Worker(workerCode, {
-        eval: true,
+      const workerPath = join(__dirname, 'workers', 'clustering.worker.js');
+      this.logger.info(`Worker path: ${workerPath}, vectors: ${vectors.length}x${vectors[0]?.length}, params: ${JSON.stringify(params)}`);
+      const worker = new Worker(workerPath, {
         workerData: { vectors, params, reducedDims, umapNNeighbors, umapMinDist },
       });
       worker.on('message', (result) => {
+        this.logger.info(`Worker result: keys=${Object.keys(result || {}).join(',')}, hasError=${!!result?.__error}`);
         if (result && result.__error) {
           reject(new Error(result.__error));
         } else {

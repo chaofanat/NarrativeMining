@@ -26,6 +26,8 @@
 │   │   │   ├── EmbeddingService.ts  # 向量嵌入生成
 │   │   │   ├── VectorService.ts     # 语义相似度搜索
 │   │   │   └── ClusteringService.ts # HDBSCAN 聚类分析
+│   │   ├── workers/             # Worker 线程入口
+│   │   │   └── clustering.worker.ts
 │   │   ├── ipc/                 # IPC 通信
 │   │   ├── store/               # 配置存储 (electron-store)
 │   │   ├── logger/              # 日志系统
@@ -117,12 +119,12 @@ Model  → Service → View  → Bridge
 
 - **IPC 通信**：主进程/渲染进程通过 IPC 通信，类型定义在 `src/shared/types.ts`，频道常量在 `src/shared/constants.ts`
 - **数据存储**：`electron-store`，配置在 `src/main/store/index.ts`，支持 dot-notation key
-- **SQLite 数据库**：`better-sqlite3`，WAL 模式，位于 `%APPDATA%/electron-vue-template/narrative-mining.db`
-- **日志系统**：`electron-log`，日志位于 `%APPDATA%/electron-vue-template/logs/`
+- **SQLite 数据库**：`better-sqlite3`，WAL 模式，位于 `%APPDATA%/narrative-mining/narrative-mining.db`
+- **日志系统**：`electron-log`，日志位于 `%APPDATA%/narrative-mining/logs/`
 
 ## 数据层规则
 
-- **better-sqlite3 必须外部化**：`vite.main.config.ts` 的 `rollupOptions.external` 必须包含 `'better-sqlite3'`、`'sqlite-vec'`、`'hdbscan-ts'`、`'umap-js'`，否则构建失败
+- **原生模块必须外部化**：`vite.main.config.ts` 的 `rollupOptions.external` 必须包含 `'better-sqlite3'`、`'sqlite-vec'`（有 `.node`/`.dll` 二进制，Vite 无法打包）。纯 JS 模块（`hdbscan-ts`、`umap-js`、`ml-pca` 等）不 external，由 Vite 直接打包进 bundle
 - **同步表的 id 用 `INTEGER PRIMARY KEY`，不加 AUTOINCREMENT**：`raw_messages` 和 `narratives` 的 `id` 来自远程 API，AUTOINCREMENT 会导致 INSERT OR REPLACE 时 id 跑偏，增量同步判断失效
 - **FTS 索引随数据写入**：`SyncService` 在同一事务中写入数据行 + FTS 行，不单独重建索引
 - **增量同步基于 max_id**：`sync_state` 表存储 `max_raw_id` / `max_narrative_id`，每批检查 `item.id > lastMaxId`，全批旧记录时提前终止
@@ -132,7 +134,9 @@ Model  → Service → View  → Bridge
 - **FTS 搜索策略**：unicode61 分词器不拆分 CJK 连续字符（整个中文短语是一个 token），连字符是分隔符。`toFtsQuery` 对简单词用裸前缀 `term*`，含特殊字符（`-`, `.`, `:`, `*`, `(`, `)`, `"`, 空格）用引号包裹 `"term"`。`*` 只能跟裸词，不能跟引号短语。搜索前对输入做 `trim()` 检查，空字符串不能进 MATCH
 - **sqlite-vec 元数据列**：`narrative_vec` 使用 `vec0(embedding float[N], publish_time text)` 创建。`publish_time` 作为元数据列可在 KNN 查询的 WHERE 子句中直接过滤（距离计算前），无需 JS 端后过滤。KNN 查询格式：`WHERE embedding MATCH ? AND k = ? AND publish_time >= ? AND publish_time <= ?`
 - **vec0 schema 版本控制**：`ensureVecDimensions()` 通过 `sync_state` 中的 `vec_dimensions` + `vec_schema_version` 检测变更。维度或 schema 版本不匹配时 DROP + 重建 `narrative_vec`，需重新触发嵌入生成。当前版本：`VEC_SCHEMA_VERSION = 2`
-- **聚类使用 Worker Thread**：`ClusteringService.runHdbscanWorker()` 通过 `new Worker(code, { eval: true })` 执行 UMAP + HDBSCAN，避免阻塞主线程。Worker 内 `require()` 在 dev 模式下从 node_modules 解析
+- **聚类使用 Worker Thread**：`ClusteringService.runHdbscanWorker()` 通过 `new Worker(workerPath)` 加载 `src/main/workers/clustering.worker.ts`（Vite 独立构建），避免阻塞主线程
+- **打包时原生模块处理**：`forge.config.ts` 的 `postPackage` hook 将 `better-sqlite3`、`sqlite-vec` 等原生模块复制到 `resources/node_modules/`；`index.ts` 在 `app.isPackaged` 时设置 `NODE_PATH` 指向该目录
+- **禁止在主进程代码中 import `resolve` from `path`**：Vite CJS flat bundle 里 `path.resolve` 会被 Rollup 重命名，在 Promise 回调等作用域内可能与 Promise 的 `resolve` 参数冲突，导致运行时调用的是 Promise resolve 而非 `path.resolve`。用 `path.join` 替代（拼接 `__dirname` + 相对路径时效果一致）
 
 ## TypeScript 配置
 
@@ -161,10 +165,11 @@ Model  → Service → View  → Bridge
 
 - **npm install 失败**：设置 `$env:ELECTRON_MIRROR='https://npmmirror.com/mirrors/electron/'` 后重装
 - **better-sqlite3 构建失败**：`npx electron-rebuild -f -w better-sqlite3`
-- **同步数据不更新**：Schema 变更后需删除 `%APPDATA%/electron-vue-template/narrative-mining.db` 重建
+- **同步数据不更新**：Schema 变更后需删除 `%APPDATA%/narrative-mining/narrative-mining.db` 重建
 - **TypeScript 报错**：清理 `.vite/build/` 后重试；三个子项目用各自的 tsconfig 独立检查
 - **向量搜索报 KNN 错误**：vec0 的 KNN 查询必须有 `k = ?` 约束，不能用 `WHERE rowid IN (...)` 干扰 KNN 扫描计划
 - **维度变更后向量丢失**：修改 embedding 维度或 vec0 schema 升级会自动 DROP 重建 `narrative_vec`，需在设置页重新触发嵌入生成
+- **打包后找不到原生模块**：`postPackage` hook 负责复制 `better-sqlite3`/`sqlite-vec` 到 `resources/node_modules/`，如果 hook 里列的模块路径不存在（`node_modules/xxx` 缺失），打包后运行时 `require()` 会报 `Cannot find module`
 
 ## 相关文档
 
