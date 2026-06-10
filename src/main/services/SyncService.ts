@@ -116,6 +116,14 @@ export class SyncService {
         return this.getSyncState();
       }
 
+      // 对账：补全叙事引用但本地缺失的原始消息
+      await this.reconcileMissingRawMessages();
+
+      if (this.cancelled) {
+        this.logger.info('同步已取消');
+        return this.getSyncState();
+      }
+
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, '0');
       const localTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
@@ -326,6 +334,61 @@ export class SyncService {
     } finally {
       this.db.pragma(`foreign_keys = ${prevFk}`);
     }
+  }
+
+  /** 对账：查找叙事引用了但本地缺失的原始消息，逐条从远程补全 */
+  private async reconcileMissingRawMessages(): Promise<void> {
+    const orphans = this.db.prepare(
+      `SELECT DISTINCT raw_id FROM narratives
+       WHERE raw_id IS NOT NULL AND raw_id NOT IN (SELECT id FROM raw_messages)`,
+    ).all() as { raw_id: number }[];
+
+    if (orphans.length === 0) return;
+
+    this.logger.info(`对账发现 ${orphans.length} 条缺失的原始消息，开始补全...`);
+    this.emitProgress({ phase: 'raw', fetched: 0, total: orphans.length, message: `对账补全原始消息 0/${orphans.length}` });
+
+    const insertStmt = this.db.prepare(`
+      INSERT OR REPLACE INTO raw_messages (id, level, time, title, brief, content, stocks, subjects, received_at, synced_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `);
+    const insertFts = this.db.prepare(`
+      INSERT OR REPLACE INTO raw_messages_fts (rowid, row_id, text) VALUES (?, ?, ?)
+    `);
+
+    let patched = 0;
+    for (const { raw_id } of orphans) {
+      if (this.cancelled) return;
+
+      try {
+        const item = await this.apiClient.getRaw(raw_id);
+        const receivedAt = item.received_at != null ? String(item.received_at) : null;
+        insertStmt.run(
+          item.id,
+          item.level || null,
+          item.time || null,
+          item.title || '',
+          item.brief || null,
+          item.content || null,
+          JSON.stringify(item.stocks || []),
+          JSON.stringify(item.subjects || []),
+          receivedAt,
+        );
+        insertFts.run(item.id, item.id, extractRawFtsText({ ...item, received_at: receivedAt }));
+        patched++;
+      } catch (err) {
+        this.logger.error(`对账补全 raw_id=${raw_id} 失败: ${err instanceof Error ? err.message : err}`);
+      }
+
+      this.emitProgress({
+        phase: 'raw',
+        fetched: patched,
+        total: orphans.length,
+        message: `对账补全原始消息 ${patched}/${orphans.length}`,
+      });
+    }
+
+    this.logger.info(`对账补全完成，成功 ${patched}/${orphans.length} 条`);
   }
 
   cancelSync(): void {
